@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPi Relay Controller</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            color: #00d4ff;
+            margin-bottom: 5px;
+        }
+
+        header p {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .master-controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 25px;
+        }
+
+        .master-btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .master-btn.all-on {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+            color: white;
+        }
+
+        .master-btn.all-off {
+            background: linear-gradient(135deg, #d63031 0%, #e17055 100%);
+            color: white;
+        }
+
+        .master-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        }
+
+        .relay-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .relay-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .relay-card:hover {
+            border-color: rgba(0,212,255,0.3);
+            box-shadow: 0 5px 30px rgba(0,212,255,0.1);
+        }
+
+        .relay-card.active {
+            border-color: #00ff88;
+            box-shadow: 0 0 20px rgba(0,255,136,0.2);
+        }
+
+        .relay-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .relay-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .relay-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .relay-status.on {
+            background: rgba(0,255,136,0.2);
+            color: #00ff88;
+        }
+
+        .relay-status.off {
+            background: rgba(255,255,255,0.1);
+            color: #888;
+        }
+
+        .relay-status.pulsing {
+            background: rgba(255,193,7,0.2);
+            color: #ffc107;
+            animation: blink 0.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .relay-info {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .relay-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .relay-btn {
+            flex: 1;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .relay-btn:active {
+            transform: scale(0.95);
+        }
+
+        .relay-btn.on-btn {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+            color: white;
+        }
+
+        .relay-btn.off-btn {
+            background: linear-gradient(135deg, #636e72 0%, #b2bec3 100%);
+            color: white;
+        }
+
+        .relay-btn.pulse-btn {
+            background: linear-gradient(135deg, #fdcb6e 0%, #f39c12 100%);
+            color: #333;
+        }
+
+        .relay-btn:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 3px 15px rgba(0,0,0,0.2);
+        }
+
+        .relay-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+        }
+
+        .toast.error {
+            background: linear-gradient(135deg, #d63031 0%, #e17055 100%);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 600px) {
+            .relay-buttons {
+                flex-direction: column;
+            }
+            
+            .master-controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔌 RPi Relay Controller</h1>
+            <p><span class="status-indicator"></span>Connected - 8 Channel Relay Board</p>
+        </header>
+
+        <div class="master-controls">
+            <button class="master-btn all-on" onclick="controlAll('on')">⚡ ALL ON</button>
+            <button class="master-btn all-off" onclick="controlAll('off')">🔴 ALL OFF</button>
+        </div>
+
+        <div class="relay-grid" id="relayGrid">
+            <!-- Relay cards will be generated by JavaScript -->
+        </div>
+
+        <footer>
+            MyPico Relay Controller • Raspberry Pi 4 • Debian Trixie
+        </footer>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const relayConfig = {
+            1: { pin: 5,  name: "Relay 1" },
+            2: { pin: 6,  name: "Relay 2" },
+            3: { pin: 13, name: "Relay 3" },
+            4: { pin: 16, name: "Relay 4" },
+            5: { pin: 19, name: "Relay 5" },
+            6: { pin: 20, name: "Relay 6" },
+            7: { pin: 21, name: "Relay 7" },
+            8: { pin: 26, name: "Relay 8" }
+        };
+
+        let relayStates = {};
+
+        function createRelayCards() {
+            const grid = document.getElementById('relayGrid');
+            grid.innerHTML = '';
+
+            for (const [channel, config] of Object.entries(relayConfig)) {
+                const state = relayStates[channel]?.state || false;
+                const card = document.createElement('div');
+                card.className = `relay-card ${state ? 'active' : ''}`;
+                card.id = `relay-${channel}`;
+                card.innerHTML = `
+                    <div class="relay-header">
+                        <span class="relay-name">${config.name}</span>
+                        <span class="relay-status ${state ? 'on' : 'off'}" id="status-${channel}">
+                            ${state ? 'ON' : 'OFF'}
+                        </span>
+                    </div>
+                    <div class="relay-info">GPIO BCM ${config.pin}</div>
+                    <div class="relay-buttons">
+                        <button class="relay-btn on-btn" onclick="controlRelay(${channel}, 'on')">ON</button>
+                        <button class="relay-btn off-btn" onclick="controlRelay(${channel}, 'off')">OFF</button>
+                        <button class="relay-btn pulse-btn" onclick="controlRelay(${channel}, 'pulse')">PULSE 1s</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            }
+        }
+
+        async function controlRelay(channel, action) {
+            try {
+                const response = await fetch(`/api/relay/${channel}/${action}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    if (action === 'pulse') {
+                        updateRelayUI(channel, true, true);
+                        showToast(`Relay ${channel} pulsing for 1 second`, 'success');
+                        setTimeout(() => {
+                            updateRelayUI(channel, false, false);
+                        }, 1000);
+                    } else {
+                        updateRelayUI(channel, data.state, false);
+                        showToast(`Relay ${channel} turned ${action.toUpperCase()}`, 'success');
+                    }
+                } else {
+                    showToast(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        async function controlAll(action) {
+            try {
+                const response = await fetch(`/api/all/${action}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    for (const channel in relayConfig) {
+                        updateRelayUI(channel, data.state, false);
+                    }
+                    showToast(`All relays turned ${action.toUpperCase()}`, 'success');
+                }
+            } catch (error) {
+                showToast(`Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        function updateRelayUI(channel, state, pulsing) {
+            const card = document.getElementById(`relay-${channel}`);
+            const status = document.getElementById(`status-${channel}`);
+
+            if (pulsing) {
+                card.classList.add('active');
+                status.className = 'relay-status pulsing';
+                status.textContent = 'PULSE';
+            } else if (state) {
+                card.classList.add('active');
+                status.className = 'relay-status on';
+                status.textContent = 'ON';
+            } else {
+                card.classList.remove('active');
+                status.className = 'relay-status off';
+                status.textContent = 'OFF';
+            }
+
+            relayStates[channel] = { state };
+        }
+
+        function showToast(message, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                relayStates = await response.json();
+                createRelayCards();
+            } catch (error) {
+                console.error('Failed to fetch status:', error);
+                createRelayCards();
+            }
+        }
+
+        // Initial load
+        fetchStatus();
+
+        // Refresh status every 5 seconds
+        setInterval(fetchStatus, 5000);
+    </script>
+</body>
+</html>

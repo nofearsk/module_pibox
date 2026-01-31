@@ -1,0 +1,14 @@
+[Unit]
+Description=RPi Relay Board Web Controller
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/admin/relay_web
+ExecStart=/usr/bin/python3 /home/admin/relay_web/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
