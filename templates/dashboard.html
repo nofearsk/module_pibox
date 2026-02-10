@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - PiBox{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="page-header">
+        <h1>Dashboard</h1>
+        <div class="sync-info">
+            <span id="sync-time">Last sync: {{ sync_status.last_sync or 'Never' }}</span>
+            <button onclick="forceSync()" class="btn btn-sm">Sync Now</button>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="stat-total">{{ stats.total }}</div>
+            <div class="stat-label">Today Total</div>
+        </div>
+        <div class="stat-card stat-success">
+            <div class="stat-value" id="stat-granted">{{ stats.granted }}</div>
+            <div class="stat-label">Granted</div>
+        </div>
+        <div class="stat-card stat-danger">
+            <div class="stat-value" id="stat-denied">{{ stats.denied }}</div>
+            <div class="stat-label">Denied</div>
+        </div>
+        <div class="stat-card stat-warning">
+            <div class="stat-value" id="stat-unknown">{{ stats.unknown }}</div>
+            <div class="stat-label">Unknown</div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Live Feed -->
+        <div class="card live-feed">
+            <div class="card-header">
+                <h2>Live Access Feed</h2>
+                <span class="badge" id="ws-badge">Connecting...</span>
+            </div>
+            <div class="card-body">
+                <div id="access-feed" class="feed-list">
+                    {% for log in recent_logs %}
+                    <div class="feed-item {% if log.access_granted %}granted{% else %}denied{% endif %}">
+                        <div class="feed-image">
+                            {% if log.image_path %}
+                            <img src="/images/{{ log.image_path }}" alt="{{ log.plate }}">
+                            {% else %}
+                            <div class="no-image">No Image</div>
+                            {% endif %}
+                        </div>
+                        <div class="feed-info">
+                            <div class="feed-plate">{{ log.plate }}</div>
+                            <div class="feed-details">
+                                {% if log.owner_name %}
+                                {{ log.owner_name }} | {{ log.unit_name }}
+                                {% else %}
+                                Unknown Vehicle
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="feed-status">
+                            <span class="status-badge {% if log.access_granted %}success{% else %}danger{% endif %}">
+                                {% if log.access_granted %}GRANTED{% else %}DENIED{% endif %}
+                            </span>
+                            <span class="feed-time">{{ log.timestamp[11:19] }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Barriers -->
+        <div class="card barriers">
+            <div class="card-header">
+                <h2>Barriers</h2>
+            </div>
+            <div class="card-body">
+                <div class="barrier-grid">
+                    {% for id, relay in relay_states.items() %}
+                    <div class="barrier-card" id="barrier-{{ id }}">
+                        <div class="barrier-name">{{ relay.name }}</div>
+                        <div class="barrier-state {% if relay.state %}on{% else %}off{% endif %}">
+                            {{ 'ON' if relay.state else 'OFF' }}
+                        </div>
+                        <button onclick="pulseRelay({{ id }})" class="btn btn-primary btn-sm">
+                            OPEN
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const WS_PORT = {{ ws_port }};
+</script>
+<script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+<script>
+    // Initialize WebSocket
+    initWebSocket();
+
+    function forceSync() {
+        fetch('/api/sync/now', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Sync started');
+                }
+            });
+    }
+
+    function pulseRelay(channel) {
+        fetch(`/api/relay/${channel}/pulse`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const card = document.getElementById(`barrier-${channel}`);
+                    card.classList.add('pulsing');
+                    setTimeout(() => card.classList.remove('pulsing'), 1500);
+                }
+            });
+    }
+</script>
+{% endblock %}

@@ -1,34 +1,63 @@
 #!/bin/bash
-# RPi Relay Board Web Controller - Setup Script
-# For Debian 13 Trixie / Raspberry Pi 4 64-bit
+# PiBox Edge Controller Setup Script
+# For Raspberry Pi 4 with Debian 13 Trixie (64-bit)
 
-echo "=========================================="
-echo "  RPi Relay Web Controller Setup"
-echo "=========================================="
+set -e
 
-# Update packages
-echo "[1/3] Updating packages..."
-sudo apt update
+echo "=================================="
+echo "  PiBox Edge Controller Setup"
+echo "=================================="
 
-# Install dependencies
-echo "[2/3] Installing Python dependencies..."
-sudo apt install -y python3-pip python3-lgpio python3-flask
-
-# If flask not available via apt, use pip
-if ! python3 -c "import flask" 2>/dev/null; then
-    echo "Installing Flask via pip..."
-    pip3 install flask --break-system-packages
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root (sudo ./setup.sh)"
+    exit 1
 fi
 
+# Update package list
+echo "[1/6] Updating package list..."
+apt update
+
+# Install system dependencies
+echo "[2/6] Installing system dependencies..."
+apt install -y python3-pip python3-lgpio python3-flask
+
+# Install Python packages
+echo "[3/6] Installing Python packages..."
+pip3 install websockets boto3 requests --break-system-packages
+
+# Create data directories
+echo "[4/6] Creating data directories..."
+mkdir -p /var/pibox/images
+chown -R $SUDO_USER:$SUDO_USER /var/pibox
+
 # Make app executable
+echo "[5/6] Setting permissions..."
 chmod +x app.py
 
-echo "[3/3] Setup complete!"
+# Install systemd service
+echo "[6/6] Installing systemd service..."
+cp pibox.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable pibox
+
 echo ""
-echo "=========================================="
-echo "  To run the server:"
-echo "  sudo python3 app.py"
+echo "=================================="
+echo "  Setup Complete!"
+echo "=================================="
 echo ""
-echo "  Then open in browser:"
-echo "  http://<raspberry-pi-ip>:8080"
-echo "=========================================="
+echo "To start the service:"
+echo "  sudo systemctl start pibox"
+echo ""
+echo "To view logs:"
+echo "  sudo journalctl -u pibox -f"
+echo ""
+echo "Access the web interface at:"
+echo "  http://$(hostname -I | cut -d' ' -f1):8080"
+echo ""
+echo "WebSocket server at:"
+echo "  ws://$(hostname -I | cut -d' ' -f1):8081"
+echo ""
+echo "Configure settings at:"
+echo "  http://$(hostname -I | cut -d' ' -f1):8080/settings"
+echo ""

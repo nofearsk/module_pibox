@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Vehicles - PiBox{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1>Registered Vehicles</h1>
+        <div class="header-actions">
+            <input type="text" id="search-input" placeholder="Search plate..." class="search-input">
+            <span class="badge">{{ total }} vehicles</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <table class="data-table" id="vehicles-table">
+                <thead>
+                    <tr>
+                        <th>Plate</th>
+                        <th>Owner</th>
+                        <th>Unit</th>
+                        <th>Valid From</th>
+                        <th>Valid To</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in vehicles %}
+                    <tr>
+                        <td class="plate-cell">{{ v.plate }}</td>
+                        <td>{{ v.owner_name or '-' }}</td>
+                        <td>{{ v.unit_name or '-' }}</td>
+                        <td>{{ v.valid_from or '-' }}</td>
+                        <td>{{ v.valid_to or '-' }}</td>
+                        <td>
+                            <span class="status-badge {% if v.active %}success{% else %}danger{% endif %}">
+                                {{ 'Active' if v.active else 'Inactive' }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('search-input');
+    const table = document.getElementById('vehicles-table');
+    const tbody = table.querySelector('tbody');
+
+    searchInput.addEventListener('input', debounce(function() {
+        const query = this.value.trim();
+        if (query.length < 2) {
+            // Show all rows
+            tbody.querySelectorAll('tr').forEach(row => row.style.display = '');
+            return;
+        }
+
+        // Filter via API
+        fetch(`/api/vehicles/search?plate=${encodeURIComponent(query)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const plates = new Set(data.vehicles.map(v => v.plate));
+                    tbody.querySelectorAll('tr').forEach(row => {
+                        const plate = row.querySelector('.plate-cell').textContent;
+                        row.style.display = plates.has(plate) ? '' : 'none';
+                    });
+                }
+            });
+    }, 300));
+
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func.apply(this, args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+</script>
+{% endblock %}

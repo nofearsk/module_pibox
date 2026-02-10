@@ -5,7 +5,32 @@
       "Bash(ssh:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh repo create:*)",
+      "Bash(where:*)",
+      "Bash(winget install:*)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth status)",
+      "Bash(sudo chown:*)",
+      "Bash(sshpass:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(sudo systemctl status:*)",
+      "Bash(ping:*)",
+      "Bash(/odoo/custom/addons/module_pibox/services/s3_service.py )",
+      "Bash(/odoo/custom/addons/module_pibox/services/access_service.py )",
+      "Bash(/odoo/custom/addons/module_pibox/services/sync_service.py )",
+      "Bash(admin@192.168.1.238:/home/admin/pibox/services/)",
+      "Bash(/odoo/custom/addons/module_pibox/routes/anpr_routes.py )",
+      "Bash(/odoo/custom/addons/module_pibox/routes/api_routes.py )",
+      "Bash(admin@192.168.1.238:/home/admin/pibox/routes/)",
+      "Bash(/odoo/custom/addons/module_pibox/templates/settings.html )",
+      "Bash(admin@192.168.1.238:/home/admin/pibox/templates/)",
+      "Bash(/odoo/custom/addons/module_pibox/database/models.py )",
+      "Bash(/odoo/custom/addons/module_pibox/database/db.py )",
+      "Bash(admin@192.168.1.238:/home/admin/pibox/database/)",
+      "Bash(/odoo/custom/addons/module_pibox/services/odoo_api.py )",
+      "Bash(/odoo/custom/addons/module_pibox/templates/barriers.html )",
+      "Bash(/odoo/custom/addons/module_pibox/routes/web_routes.py )"
     ]
   }
 }

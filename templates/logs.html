@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Access Logs - PiBox{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1>Access Logs</h1>
+        <div class="header-actions">
+            <select id="filter-type" class="filter-select">
+                <option value="">All</option>
+                <option value="resident">Residents</option>
+                <option value="unknown">Unknown</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid stats-small">
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">Total</div>
+        </div>
+        <div class="stat-card stat-success">
+            <div class="stat-value">{{ stats.granted }}</div>
+            <div class="stat-label">Granted</div>
+        </div>
+        <div class="stat-card stat-danger">
+            <div class="stat-value">{{ stats.denied }}</div>
+            <div class="stat-label">Denied</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <table class="data-table" id="logs-table">
+                <thead>
+                    <tr>
+                        <th>Image</th>
+                        <th>Plate</th>
+                        <th>Owner</th>
+                        <th>Unit</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr data-type="{{ log.vehicle_type }}">
+                        <td>
+                            {% if log.image_path %}
+                            <img src="/images/{{ log.image_path }}" alt="{{ log.plate }}" class="thumb">
+                            {% else %}
+                            <span class="no-thumb">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="plate-cell">{{ log.plate }}</td>
+                        <td>{{ log.owner_name or '-' }}</td>
+                        <td>{{ log.unit_name or '-' }}</td>
+                        <td>
+                            <span class="type-badge {{ log.vehicle_type }}">
+                                {{ log.vehicle_type }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="status-badge {% if log.access_granted %}success{% else %}danger{% endif %}">
+                                {{ 'Granted' if log.access_granted else 'Denied' }}
+                            </span>
+                        </td>
+                        <td>{{ log.timestamp }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const filterType = document.getElementById('filter-type');
+    const tbody = document.querySelector('#logs-table tbody');
+
+    filterType.addEventListener('change', function() {
+        const type = this.value;
+        tbody.querySelectorAll('tr').forEach(row => {
+            if (!type || row.dataset.type === type) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+</script>
+{% endblock %}

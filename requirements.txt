@@ -1,0 +1,14 @@
+# PiBox Edge Controller Requirements
+# Install on Raspberry Pi: pip3 install -r requirements.txt
+
+# Web framework
+flask>=2.0.0
+
+# WebSocket server
+websockets>=10.0
+
+# HTTP requests for Odoo API
+requests>=2.28.0
+
+# GPIO control (Raspberry Pi only)
+# lgpio  # Install via apt: sudo apt install python3-lgpio

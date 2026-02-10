@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PiBox{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">&#9635;</span> PiBox
+        </div>
+        <div class="nav-links">
+            <a href="/" class="{% if request.path == '/' %}active{% endif %}">Dashboard</a>
+            <a href="/vehicles" class="{% if request.path == '/vehicles' %}active{% endif %}">Vehicles</a>
+            <a href="/logs" class="{% if request.path == '/logs' %}active{% endif %}">Access Logs</a>
+            <a href="/barriers" class="{% if request.path == '/barriers' %}active{% endif %}">Barriers</a>
+            <a href="/settings" class="{% if request.path == '/settings' %}active{% endif %}">Settings</a>
+        </div>
+        <div class="nav-status">
+            <span id="odoo-status" class="status-dot"></span>
+            <span id="ws-status" class="status-dot"></span>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

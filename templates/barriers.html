@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+
+{% block title %}Barriers - PiBox{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Improved Relay Grid */
+    .relay-grid-improved {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+    @media (max-width: 1200px) {
+        .relay-grid-improved { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 900px) {
+        .relay-grid-improved { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 600px) {
+        .relay-grid-improved { grid-template-columns: 1fr; }
+    }
+    .relay-card-improved {
+        background: linear-gradient(145deg, #1f2937, #16213e);
+        border-radius: 12px;
+        padding: 1.25rem;
+        border: 1px solid #374151;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .relay-card-improved:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+    .relay-card-improved.pulsing {
+        animation: pulse-glow 0.5s ease-in-out;
+    }
+    @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 0 rgba(59, 130, 246, 0); }
+        50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6); }
+    }
+    .relay-header-improved {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #374151;
+    }
+    .relay-name-improved {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #f3f4f6;
+    }
+    .relay-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 20px;
+    }
+    .relay-status.on {
+        background: rgba(16, 185, 129, 0.2);
+        color: #10b981;
+    }
+    .relay-status.off {
+        background: rgba(107, 114, 128, 0.2);
+        color: #9ca3af;
+    }
+    .relay-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .relay-actions-improved {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+    .relay-actions-improved .btn {
+        padding: 0.6rem 0.5rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .relay-actions-improved .btn-pulse {
+        grid-column: span 2;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+    }
+    .relay-actions-improved .btn-pulse:hover {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    }
+
+    /* Multi-select dropdown (select2-like) */
+    .multi-select {
+        position: relative;
+        min-width: 200px;
+    }
+    .multi-select-display {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fff;
+        min-height: 36px;
+        cursor: pointer;
+        align-items: center;
+    }
+    .multi-select-display:hover {
+        border-color: #2196F3;
+    }
+    .multi-select-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: #2196F3;
+        color: #fff;
+        border-radius: 3px;
+        font-size: 12px;
+    }
+    .multi-select-tag .remove {
+        cursor: pointer;
+        font-weight: bold;
+        margin-left: 4px;
+    }
+    .multi-select-tag .remove:hover {
+        color: #ffcdd2;
+    }
+    .multi-select-placeholder {
+        color: #999;
+        font-size: 13px;
+    }
+    .multi-select-dropdown {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1px solid #ccc;
+        border-top: none;
+        border-radius: 0 0 4px 4px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        z-index: 100;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .multi-select.open .multi-select-dropdown {
+        display: block;
+    }
+    .multi-select-option {
+        padding: 8px 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .multi-select-option:hover {
+        background: #f5f5f5;
+    }
+    .multi-select-option.selected {
+        background: #e3f2fd;
+    }
+    .multi-select-option input {
+        margin: 0;
+    }
+    .info-text {
+        color: #888;
+        margin-bottom: 15px;
+        font-size: 14px;
+    }
+    code {
+        background: #333;
+        color: #0f0;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1>Barrier Configuration</h1>
+    </div>
+
+    <!-- Relay Status -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Relay Controls</h2>
+        </div>
+        <div class="card-body">
+            <div class="relay-grid-improved">
+                {% for id, relay in relay_states.items() %}
+                <div class="relay-card-improved" id="relay-{{ id }}">
+                    <div class="relay-header-improved">
+                        <span class="relay-name-improved">{{ relay.name }}</span>
+                        <span class="relay-status {% if relay.state %}on{% else %}off{% endif %}">
+                            <span class="relay-status-dot"></span>
+                            {{ 'ON' if relay.state else 'OFF' }}
+                        </span>
+                    </div>
+                    <div class="relay-actions-improved">
+                        <button onclick="setRelay({{ id }}, true)" class="btn btn-success">ON</button>
+                        <button onclick="setRelay({{ id }}, false)" class="btn btn-danger">OFF</button>
+                        <button onclick="pulseRelay({{ id }})" class="btn btn-pulse">PULSE</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ANPR Camera Relay Mapping -->
+    <div class="card">
+        <div class="card-header">
+            <h2>ANPR Camera Relay Mapping</h2>
+        </div>
+        <div class="card-body">
+            <p class="info-text">Configure which relay(s) to trigger when a vehicle is detected by each camera.</p>
+            {% if anpr_cameras %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Camera</th>
+                        <th>Reg Code</th>
+                        <th>Location</th>
+                        <th>Relay Channels</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cam in anpr_cameras %}
+                    <tr id="cam-row-{{ cam.id }}">
+                        <td>{{ cam.name or 'Unnamed' }}</td>
+                        <td><code>{{ cam.reg_code }}</code></td>
+                        <td>{{ cam.location_name or '-' }}</td>
+                        <td>
+                            <div class="multi-select" id="relay-select-{{ cam.reg_code }}" data-regcode="{{ cam.reg_code }}">
+                                <div class="multi-select-display" onclick="toggleDropdown(this.parentElement)">
+                                    {% if cam.relay_list %}
+                                        {% for i in cam.relay_list %}
+                                        <span class="multi-select-tag" data-value="{{ i }}">
+                                            Relay {{ i }}<span class="remove" onclick="removeTag(event, this)">&times;</span>
+                                        </span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="multi-select-placeholder">Select relays...</span>
+                                    {% endif %}
+                                </div>
+                                <div class="multi-select-dropdown">
+                                    {% for i in range(1, 9) %}
+                                    <div class="multi-select-option {% if i in (cam.relay_list or []) %}selected{% endif %}"
+                                         data-value="{{ i }}" onclick="toggleOption(this, event)">
+                                        <input type="checkbox" {% if i in (cam.relay_list or []) %}checked{% endif %}>
+                                        <span>Relay {{ i }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <button onclick="saveAnprRelay('{{ cam.reg_code }}')" class="btn btn-sm btn-primary">Save</button>
+                            <button onclick="testRelay('{{ cam.reg_code }}')" class="btn btn-sm">Test</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty-state">No ANPR cameras synced from Odoo. Go to Settings and sync with Odoo first.</p>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Relay Control Functions
+    function setRelay(channel, state) {
+        const action = state ? 'on' : 'off';
+        fetch(`/api/relay/${channel}/${action}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    updateRelayState(channel, state);
+                }
+            });
+    }
+
+    function pulseRelay(channel) {
+        fetch(`/api/relay/${channel}/pulse`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const card = document.getElementById(`relay-${channel}`);
+                    card.classList.add('pulsing');
+                    setTimeout(() => card.classList.remove('pulsing'), 1500);
+                }
+            });
+    }
+
+    function updateRelayState(channel, state) {
+        const card = document.getElementById(`relay-${channel}`);
+        const stateEl = card.querySelector('.relay-status');
+        stateEl.innerHTML = `<span class="relay-status-dot"></span>${state ? 'ON' : 'OFF'}`;
+        stateEl.className = `relay-status ${state ? 'on' : 'off'}`;
+    }
+
+    // Multi-select dropdown functions
+    function toggleDropdown(container) {
+        // Close other dropdowns
+        document.querySelectorAll('.multi-select.open').forEach(el => {
+            if (el !== container) el.classList.remove('open');
+        });
+        container.classList.toggle('open');
+    }
+
+    function toggleOption(optionEl, evt) {
+        evt.stopPropagation();
+        const checkbox = optionEl.querySelector('input[type="checkbox"]');
+        // Only toggle if click wasn't directly on checkbox
+        if (evt.target.type !== 'checkbox') {
+            checkbox.checked = !checkbox.checked;
+        }
+        optionEl.classList.toggle('selected', checkbox.checked);
+
+        const container = optionEl.closest('.multi-select');
+        updateDisplayTags(container);
+    }
+
+    function removeTag(event, tagRemoveBtn) {
+        event.stopPropagation();
+        const tag = tagRemoveBtn.parentElement;
+        const value = tag.dataset.value;
+        const container = tag.closest('.multi-select');
+
+        // Uncheck the corresponding option
+        const option = container.querySelector(`.multi-select-option[data-value="${value}"]`);
+        if (option) {
+            option.classList.remove('selected');
+            option.querySelector('input').checked = false;
+        }
+
+        updateDisplayTags(container);
+    }
+
+    function updateDisplayTags(container) {
+        const display = container.querySelector('.multi-select-display');
+        const selectedOptions = container.querySelectorAll('.multi-select-option.selected');
+
+        // Clear current tags
+        display.innerHTML = '';
+
+        if (selectedOptions.length === 0) {
+            display.innerHTML = '<span class="multi-select-placeholder">Select relays...</span>';
+        } else {
+            selectedOptions.forEach(opt => {
+                const value = opt.dataset.value;
+                const tag = document.createElement('span');
+                tag.className = 'multi-select-tag';
+                tag.dataset.value = value;
+                tag.innerHTML = `Relay ${value}<span class="remove" onclick="removeTag(event, this)">&times;</span>`;
+                display.appendChild(tag);
+            });
+        }
+    }
+
+    function getSelectedRelays(regCode) {
+        const container = document.getElementById(`relay-select-${regCode}`);
+        const selectedOptions = container.querySelectorAll('.multi-select-option.selected');
+        return Array.from(selectedOptions).map(opt => parseInt(opt.dataset.value));
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.multi-select')) {
+            document.querySelectorAll('.multi-select.open').forEach(el => {
+                el.classList.remove('open');
+            });
+        }
+    });
+
+    // ANPR Camera Relay Functions
+    function saveAnprRelay(regCode) {
+        const selectedRelays = getSelectedRelays(regCode);
+
+        fetch(`/api/anpr-cameras/${regCode}/relay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ relay_channels: selectedRelays })
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.success) {
+                showToast(`Saved: Relay ${selectedRelays.join(', ') || 'None'} for ${result.camera_name || regCode}`);
+            } else {
+                alert('Error: ' + result.error);
+            }
+        });
+    }
+
+    function testRelay(regCode) {
+        const selectedRelays = getSelectedRelays(regCode);
+
+        if (selectedRelays.length === 0) {
+            alert('No relays selected. Select at least one relay first.');
+            return;
+        }
+
+        // Pulse all selected relays
+        selectedRelays.forEach(channel => {
+            fetch(`/api/relay/${channel}/pulse`, { method: 'POST' });
+        });
+
+        showToast(`Testing Relay ${selectedRelays.join(', ')}`);
+    }
+</script>
+{% endblock %}

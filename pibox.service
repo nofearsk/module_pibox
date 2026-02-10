@@ -1,0 +1,22 @@
+[Unit]
+Description=PiBox Edge Controller
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/admin/pibox
+ExecStart=/usr/bin/python3 /home/admin/pibox/app.py
+Restart=always
+RestartSec=5
+Environment=PIBOX_DATA_DIR=/var/pibox
+Environment=PIBOX_HTTP_PORT=8080
+Environment=PIBOX_WS_PORT=8081
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pibox
+
+[Install]
+WantedBy=multi-user.target

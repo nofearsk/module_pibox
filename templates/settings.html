@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - PiBox{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1>Settings</h1>
+    </div>
+
+    <!-- Connection Status -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Connection Status</h2>
+        </div>
+        <div class="card-body">
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="status-label">Odoo Connection</span>
+                    <span class="status-value {% if sync_status.odoo_connected %}success{% else %}danger{% endif %}">
+                        {{ 'Connected' if sync_status.odoo_connected else 'Disconnected' }}
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Last Sync</span>
+                    <span class="status-value">{{ sync_status.last_sync or 'Never' }}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Vehicles Loaded</span>
+                    <span class="status-value">{{ sync_status.vehicles_count }}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Queue Pending</span>
+                    <span class="status-value">{{ sync_status.queue_pending }}</span>
+                </div>
+            </div>
+            <div class="status-actions">
+                <button onclick="testConnection()" class="btn">Test Connection</button>
+                <button onclick="forceSync()" class="btn btn-primary">Force Sync</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Odoo Configuration -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Odoo Configuration</h2>
+        </div>
+        <div class="card-body">
+            <form id="odoo-form" onsubmit="saveOdooConfig(event)">
+                <div class="form-group">
+                    <label>Odoo URL</label>
+                    <input type="url" id="odoo-url" value="{{ config.odoo_url }}" placeholder="https://your-odoo.com">
+                </div>
+                <div class="form-group">
+                    <label>Device Code (reg_code)</label>
+                    <input type="text" id="reg-code" value="{{ config.reg_code }}" placeholder="ABC12">
+                </div>
+                <div class="form-group">
+                    <label>Device Password (reg_password)</label>
+                    <input type="password" id="reg-password" value="{{ config.reg_password }}" placeholder="********">
+                </div>
+                <div class="form-group">
+                    <label>Site ID</label>
+                    <input type="number" id="site-id" value="{{ config.site_id }}" placeholder="1">
+                </div>
+                <div class="form-group">
+                    <label>Sync Interval (seconds)</label>
+                    <input type="number" id="sync-interval" value="{{ config.sync_interval }}" min="60">
+                </div>
+                <button type="submit" class="btn btn-primary">Save Odoo Settings</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- S3 Configuration -->
+    <div class="card">
+        <div class="card-header">
+            <h2>S3 Configuration (Optional)</h2>
+            <span id="s3-status" class="badge">{{ 'Enabled' if config.s3_enabled == '1' else 'Disabled' }}</span>
+        </div>
+        <div class="card-body">
+            <form id="s3-form" onsubmit="saveS3Config(event)">
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="s3-enabled" {% if config.s3_enabled == '1' %}checked{% endif %}>
+                        Enable S3 Upload
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Endpoint URL (for R2/MinIO/Spaces)</label>
+                    <input type="url" id="s3-endpoint" value="{{ config.s3_endpoint }}" placeholder="https://xxx.r2.cloudflarestorage.com">
+                    <small>Leave empty for standard AWS S3</small>
+                </div>
+                <div class="form-group">
+                    <label>Bucket Name</label>
+                    <input type="text" id="s3-bucket" value="{{ config.s3_bucket }}" placeholder="my-bucket">
+                </div>
+                <div class="form-group">
+                    <label>Access Key ID</label>
+                    <input type="text" id="s3-access-key" value="{{ config.s3_access_key }}" placeholder="AKIA...">
+                </div>
+                <div class="form-group">
+                    <label>Secret Access Key</label>
+                    <input type="password" id="s3-secret-key" value="{{ config.s3_secret_key }}">
+                </div>
+                <div class="form-group">
+                    <label>Region</label>
+                    <input type="text" id="s3-region" value="{{ config.s3_region or 'ap-southeast-1' }}" placeholder="ap-southeast-1">
+                </div>
+                <div class="form-group">
+                    <label>Prefix (folder path)</label>
+                    <input type="text" id="s3-prefix" value="{{ config.s3_prefix or 'anpr' }}" placeholder="anpr">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save S3 Settings</button>
+                    <button type="button" onclick="testS3Connection()" class="btn">Test Connection</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- System Settings -->
+    <div class="card">
+        <div class="card-header">
+            <h2>System Settings</h2>
+        </div>
+        <div class="card-body">
+            <form id="system-form" onsubmit="saveSystemConfig(event)">
+                <div class="form-group">
+                    <label>Barrier Pulse Duration (seconds)</label>
+                    <input type="number" id="barrier-pulse" value="{{ config.barrier_pulse_duration }}" min="0.5" max="10" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>Image Retention (days)</label>
+                    <input type="number" id="image-retention" value="{{ config.image_retention_days }}" min="1" max="30">
+                </div>
+                <button type="submit" class="btn btn-primary">Save System Settings</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function testConnection() {
+        fetch('/api/sync/test')
+            .then(r => r.json())
+            .then(data => {
+                alert(data.success ? 'Connection successful!' : 'Connection failed: ' + data.message);
+            });
+    }
+
+    function forceSync() {
+        fetch('/api/sync/now', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Sync started');
+                }
+            });
+    }
+
+    function saveOdooConfig(e) {
+        e.preventDefault();
+        const data = {
+            odoo_url: document.getElementById('odoo-url').value,
+            reg_code: document.getElementById('reg-code').value,
+            reg_password: document.getElementById('reg-password').value,
+            site_id: document.getElementById('site-id').value,
+            sync_interval: document.getElementById('sync-interval').value
+        };
+        saveConfig(data);
+    }
+
+    function saveS3Config(e) {
+        e.preventDefault();
+        const data = {
+            s3_enabled: document.getElementById('s3-enabled').checked ? '1' : '0',
+            s3_endpoint: document.getElementById('s3-endpoint').value,
+            s3_bucket: document.getElementById('s3-bucket').value,
+            s3_access_key: document.getElementById('s3-access-key').value,
+            s3_secret_key: document.getElementById('s3-secret-key').value,
+            s3_region: document.getElementById('s3-region').value,
+            s3_prefix: document.getElementById('s3-prefix').value
+        };
+        saveConfig(data);
+    }
+
+    function testS3Connection() {
+        fetch('/api/s3/test', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.success ? 'S3 connection successful!' : 'S3 test failed: ' + data.message);
+            });
+    }
+
+    function saveSystemConfig(e) {
+        e.preventDefault();
+        const data = {
+            barrier_pulse_duration: document.getElementById('barrier-pulse').value,
+            image_retention_days: document.getElementById('image-retention').value
+        };
+        saveConfig(data);
+    }
+
+    function saveConfig(data) {
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.success) {
+                showToast('Settings saved');
+            } else {
+                alert('Error: ' + result.error);
+            }
+        });
+    }
+</script>
+{% endblock %}
