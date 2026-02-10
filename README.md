@@ -8,8 +8,28 @@ Vehicle Access Control System for Raspberry Pi with ANPR integration.
 2. **Odoo Sync** - Sync vehicle data from Odoo server using REST API
 3. **ANPR Camera Controller** - Receive plate data from Hikvision/Dahua cameras
 4. **WebSocket Broadcast** - Real-time updates to connected clients
+5. **Auto-Update** - Daily auto-update from GitHub at 3 AM
 
-## Quick Install
+## One-Liner Install
+
+SSH into your Raspberry Pi and run:
+
+```bash
+git clone https://github.com/nofearsk/module_pibox.git /home/admin/pibox && cd /home/admin/pibox && sudo ./setup.sh
+```
+
+This will:
+- Install all dependencies
+- Create data directories
+- Set up systemd service
+- Configure daily auto-updates from GitHub
+
+After installation, start the service:
+```bash
+sudo systemctl start pibox
+```
+
+## Manual Install
 
 ```bash
 # 1. Copy files to your Pi
@@ -18,16 +38,22 @@ scp -r module_pibox admin@<pi-ip>:/home/admin/pibox
 # 2. SSH into Pi
 ssh admin@<pi-ip>
 
-# 3. Install dependencies
+# 3. Run setup script
 cd /home/admin/pibox
-pip3 install -r requirements.txt
+sudo ./setup.sh
+```
 
-# 4. Create data directory
-sudo mkdir -p /var/pibox
-sudo chown $USER:$USER /var/pibox
+## Updating
 
-# 5. Start the server
-sudo python3 app.py
+### Manual Update
+```bash
+cd /home/admin/pibox && ./update.sh
+```
+
+### Auto-Update
+Auto-update runs daily at 3:00 AM. Check logs:
+```bash
+cat /home/admin/pibox/update.log
 ```
 
 ## First Time Setup
