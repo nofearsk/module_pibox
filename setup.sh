@@ -36,10 +36,42 @@ echo "[5/6] Setting permissions..."
 chmod +x app.py
 
 # Install systemd service
-echo "[6/6] Installing systemd service..."
+echo "[6/8] Installing systemd service..."
 cp pibox.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable pibox
+
+# Setup Git for auto-updates
+echo "[7/8] Setting up Git for auto-updates..."
+PIBOX_DIR=$(pwd)
+if [ ! -d ".git" ]; then
+    git init
+    git remote add origin https://github.com/nofearsk/module_pibox.git
+    git fetch origin
+    git reset --hard origin/master
+fi
+
+# Create update script
+echo "[8/8] Creating update script and cron job..."
+cat > update.sh << 'EOF'
+#!/bin/bash
+echo "=== PiBox Update ==="
+cd /home/admin/pibox
+
+echo "Pulling latest from GitHub..."
+git fetch origin
+git reset --hard origin/master
+
+echo "Restarting service..."
+sudo systemctl restart pibox
+
+echo "Done! Checking status..."
+sudo systemctl status pibox --no-pager | head -5
+EOF
+chmod +x update.sh
+
+# Setup daily auto-update at 3 AM
+(crontab -u $SUDO_USER -l 2>/dev/null | grep -v 'pibox/update.sh'; echo "0 3 * * * $PIBOX_DIR/update.sh >> $PIBOX_DIR/update.log 2>&1") | crontab -u $SUDO_USER -
 
 echo ""
 echo "=================================="
@@ -60,4 +92,9 @@ echo "  ws://$(hostname -I | cut -d' ' -f1):8081"
 echo ""
 echo "Configure settings at:"
 echo "  http://$(hostname -I | cut -d' ' -f1):8080/settings"
+echo ""
+echo "Auto-update enabled:"
+echo "  Daily at 3:00 AM from GitHub"
+echo "  Manual update: ./update.sh"
+echo "  Update log: update.log"
 echo ""
