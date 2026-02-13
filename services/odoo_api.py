@@ -146,6 +146,23 @@ class OdooAPI:
 
         except requests.exceptions.HTTPError as e:
             self.connected = False
+            # Try to extract error details from response body
+            try:
+                error_body = response.json()
+                if 'error' in error_body:
+                    error_msg = error_body['error'].get('data', {}).get('message',
+                                error_body['error'].get('message', str(e)))
+                    self.last_error = error_msg
+                    # Check for common database issues
+                    if 'database' in error_msg.lower() or response.status_code == 400:
+                        raise OdooAPIError(f"Database error: {error_msg}. Check that database name is correct.")
+                    raise OdooAPIError(error_msg)
+            except (ValueError, KeyError):
+                pass
+            # Provide helpful message for 400 errors
+            if response.status_code == 400:
+                self.last_error = "Bad request - likely incorrect database name"
+                raise OdooAPIError("Authentication failed: Database name may be incorrect. Please verify the database name.")
             self.last_error = f"HTTP error: {e}"
             raise OdooAPIError(f"HTTP error: {e}")
 

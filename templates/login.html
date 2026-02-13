@@ -180,10 +180,13 @@
             </div>
 
             <div class="form-group">
-                <label for="db_name">Database Name <small style="color:#666">(optional)</small></label>
+                <label for="db_name">Database Name <small style="color:#666">(required if auto-detect fails)</small></label>
                 <input type="text" id="db_name" name="db_name"
-                       placeholder="Leave empty to auto-detect"
+                       placeholder="e.g., picoguards, odoo, mycompany"
                        value="{{ db_name or '' }}">
+                <small style="color:#555; font-size:11px; display:block; margin-top:4px;">
+                    Ask your Odoo admin or check your Odoo URL path
+                </small>
             </div>
 
             <div class="form-group">
