@@ -180,6 +180,13 @@
             </div>
 
             <div class="form-group">
+                <label for="db_name">Database Name <small style="color:#666">(optional)</small></label>
+                <input type="text" id="db_name" name="db_name"
+                       placeholder="Leave empty to auto-detect"
+                       value="{{ db_name or '' }}">
+            </div>
+
+            <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username"
                        placeholder="admin"
@@ -222,6 +229,7 @@
             const formData = new FormData(form);
             const data = {
                 odoo_url: formData.get('odoo_url'),
+                db_name: formData.get('db_name'),
                 username: formData.get('username'),
                 password: formData.get('password')
             };

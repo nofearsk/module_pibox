@@ -28,6 +28,7 @@ def auth_login():
         odoo_url = data.get('odoo_url', '').strip()
         username = data.get('username', '').strip()
         password = data.get('password', '')
+        db_name = data.get('db_name', '').strip() or None  # Optional database name
 
         if not odoo_url:
             return jsonify({'success': False, 'error': 'Odoo URL is required'}), 400
@@ -36,8 +37,8 @@ def auth_login():
         if not password:
             return jsonify({'success': False, 'error': 'Password is required'}), 400
 
-        # Attempt login
-        result = odoo_api.login(odoo_url, username, password)
+        # Attempt login (db_name is optional - will try to auto-detect if not provided)
+        result = odoo_api.login(odoo_url, username, password, db=db_name)
 
         # Reload config to get the new token
         config.clear_cache()

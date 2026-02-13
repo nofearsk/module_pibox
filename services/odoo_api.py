@@ -240,12 +240,15 @@ class OdooAPI:
                     db = result[0]
                 elif result and len(result) > 1:
                     raise OdooAPIError(f"Multiple databases found: {result}. Please specify database name.")
+                elif result and len(result) == 0:
+                    raise OdooAPIError("No database found. Please specify database name.")
                 else:
-                    raise OdooAPIError("No database found")
+                    raise OdooAPIError("Database name required. Please specify database name.")
             except OdooAPIError:
                 raise
             except Exception as e:
-                raise OdooAPIError(f"Failed to get database list: {e}")
+                # Database list endpoint might be disabled (404) - require manual input
+                raise OdooAPIError(f"Cannot auto-detect database. Please specify database name manually.")
 
         self._db = db
 
