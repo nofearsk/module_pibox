@@ -49,6 +49,7 @@ class S3Service:
             'region': config.get('s3_region', 'ap-southeast-1'),
             'endpoint': config.get('s3_endpoint', ''),  # For S3-compatible services
             'prefix': config.get('s3_prefix', 'anpr'),  # Folder prefix in bucket
+            'public_domain': config.get('s3_public_domain', ''),  # Custom domain for public URLs (R2, etc.)
         }
 
     @property
@@ -110,9 +111,17 @@ class S3Service:
         date_prefix = datetime.now().strftime('%Y/%m/%d')
         key = f"{cfg['prefix']}/{date_prefix}/{image_type}/{image_uuid}.jpg"
 
-        # Build URL
-        if cfg['endpoint']:
-            # Custom endpoint
+        # Build URL - priority: public_domain > endpoint > AWS S3
+        if cfg['public_domain']:
+            # Custom public domain (e.g., Cloudflare R2 with custom domain)
+            base_url = cfg['public_domain'].rstrip('/')
+            # Remove protocol if present and re-add https
+            if base_url.startswith('http://') or base_url.startswith('https://'):
+                return f"{base_url}/{key}"
+            else:
+                return f"https://{base_url}/{key}"
+        elif cfg['endpoint']:
+            # Custom endpoint (MinIO, DigitalOcean Spaces, etc.)
             base_url = cfg['endpoint'].rstrip('/')
             return f"{base_url}/{cfg['bucket']}/{key}"
         else:
@@ -322,6 +331,7 @@ class S3Service:
             'region': cfg['region'],
             'endpoint': cfg['endpoint'] if cfg['endpoint'] else None,
             'prefix': cfg['prefix'],
+            'public_domain': cfg['public_domain'] if cfg['public_domain'] else None,
         }
 
 

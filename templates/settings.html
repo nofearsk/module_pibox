@@ -145,6 +145,11 @@
                     <label>Prefix (folder path)</label>
                     <input type="text" id="s3-prefix" value="{{ config.s3_prefix or 'anpr' }}" placeholder="anpr">
                 </div>
+                <div class="form-group">
+                    <label>Public Domain (for R2/custom CDN)</label>
+                    <input type="text" id="s3-public-domain" value="{{ config.s3_public_domain }}" placeholder="images.yourdomain.com">
+                    <small>For Cloudflare R2: Enter your custom domain connected to R2 bucket</small>
+                </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Save S3 Settings</button>
                     <button type="button" onclick="testS3Connection()" class="btn">Test Connection</button>
@@ -297,7 +302,8 @@
             s3_access_key: document.getElementById('s3-access-key').value,
             s3_secret_key: document.getElementById('s3-secret-key').value,
             s3_region: document.getElementById('s3-region').value,
-            s3_prefix: document.getElementById('s3-prefix').value
+            s3_prefix: document.getElementById('s3-prefix').value,
+            s3_public_domain: document.getElementById('s3-public-domain').value
         };
         saveConfig(data);
     }
