@@ -43,6 +43,17 @@ DEFAULTS = {
     # Barrier Control
     'barrier_pulse_duration': '1.0',  # Pulse duration in seconds
     'image_retention_days': '7',      # Days to keep local images
+
+    # Relay Mode: 'gpio' or 'web' (Iotzone V5+ Ethernet Relay)
+    'relay_mode': 'gpio',             # Default to GPIO relay
+
+    # Web Relay Settings (Iotzone V5+ 8-Channel Ethernet Relay)
+    'web_relay_enabled': 'false',     # Enable web relay
+    'web_relay_ip': '',               # IP address of relay board
+    'web_relay_port': '80',           # HTTP port
+    'web_relay_username': 'admin',    # Web auth username
+    'web_relay_password': '12345678', # Web auth password
+    'web_relay_pulse_time': '1.0',    # Pulse time in seconds (configured on board)
 }
 
 

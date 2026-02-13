@@ -250,6 +250,32 @@ body {
     color: var(--text-secondary);
 }
 
+.feed-meta {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.camera-tag,
+.relay-tag {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+}
+
+.camera-tag {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent);
+}
+
+.relay-tag {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+}
+
 .feed-status {
     text-align: right;
 }
@@ -631,6 +657,90 @@ body {
     }
 }
 
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.pagination a,
+.pagination span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 0.5rem;
+    border-radius: 0.375rem;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.875rem;
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+}
+
+.pagination a:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.pagination .current {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.pagination .disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.pagination-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.page-size-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.page-size-selector select {
+    padding: 0.375rem 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+/* Search Form */
+.search-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.search-form input {
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    width: 200px;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .dashboard-grid {
@@ -660,4 +770,474 @@ body {
     .status-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* ============================================
+   BARRIERS PAGE STYLES
+   ============================================ */
+
+/* Relay Control Grid */
+.relay-control-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.75rem;
+}
+
+@media (max-width: 1200px) { .relay-control-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 600px) { .relay-control-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.relay-control-card {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.relay-control-card:hover {
+    border-color: var(--accent);
+}
+
+.relay-control-card.active {
+    border-color: var(--success);
+    background: linear-gradient(145deg, rgba(16, 185, 129, 0.1), var(--bg-secondary));
+}
+
+.relay-control-card.pulsing {
+    animation: relay-pulse 0.6s ease;
+}
+
+@keyframes relay-pulse {
+    0%, 100% { box-shadow: 0 0 0 rgba(59, 130, 246, 0); }
+    50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+}
+
+.relay-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    margin: 0 auto 0.5rem;
+    transition: all 0.3s;
+}
+
+.relay-control-card.active .relay-indicator {
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+
+.relay-number {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.relay-control-card.active .relay-number {
+    color: var(--success);
+}
+
+.relay-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.relay-btn-group {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.relay-btn-group .btn {
+    flex: 1;
+    padding: 0.35rem 0.25rem;
+    font-size: 0.6rem;
+    font-weight: 600;
+}
+
+.btn-on { background: var(--success); color: #fff; }
+.btn-on:hover { background: #059669; }
+.btn-off { background: #6b7280; color: #fff; }
+.btn-off:hover { background: #4b5563; }
+.btn-pulse {
+    background: linear-gradient(135deg, var(--accent), #2563eb);
+    color: #fff;
+}
+.btn-pulse:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+
+/* Camera Cards Grid */
+.camera-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.camera-mapping-card {
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    transition: all 0.2s;
+}
+
+.camera-mapping-card:hover {
+    border-color: var(--accent);
+}
+
+.camera-mapping-card.configured {
+    border-color: var(--success);
+}
+
+.camera-card-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.camera-card-info h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 0.25rem;
+}
+
+.camera-card-meta {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.camera-card-meta code {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--accent);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+}
+
+.camera-card-location {
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.camera-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+.camera-status-badge.configured {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+}
+
+.camera-status-badge.unconfigured {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning);
+}
+
+.camera-card-body {
+    padding: 0.75rem 1rem;
+}
+
+.relay-selector-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.relay-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+
+.relay-chip {
+    padding: 0.3rem 0.6rem;
+    border-radius: 15px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    user-select: none;
+}
+
+.relay-chip:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.relay-chip.selected {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.camera-card-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.camera-card-actions .btn {
+    flex: 1;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* Section header with badge */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.section-header .badge {
+    font-size: 0.7rem;
+}
+
+.badge.success {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+/* Empty cameras state */
+.empty-cameras {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+
+.empty-cameras p {
+    margin: 0.5rem 0;
+}
+
+.empty-cameras .btn {
+    margin-top: 1rem;
+}
+
+/* ============================================
+   CAMERA FEED PAGE STYLES
+   ============================================ */
+
+/* Camera selector chips */
+.camera-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.camera-select-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 20px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.camera-select-chip:hover {
+    border-color: var(--accent);
+}
+
+.camera-select-chip.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.camera-select-chip .chip-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all 0.2s;
+}
+
+.camera-select-chip.selected .chip-indicator {
+    background: #fff;
+    box-shadow: 0 0 6px rgba(255,255,255,0.5);
+}
+
+.camera-select-chip .chip-name {
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.camera-select-chip .chip-count {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 10px;
+    background: rgba(0,0,0,0.2);
+    min-width: 1.5rem;
+    text-align: center;
+}
+
+.camera-select-chip .chip-count.updated {
+    animation: count-pulse 0.3s ease;
+}
+
+@keyframes count-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); background: var(--success); }
+}
+
+.loading-text, .error-text, .no-cameras {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.error-text {
+    color: var(--danger);
+}
+
+/* Camera feed grid */
+.camera-feed-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.empty-feed {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+}
+
+/* Feed event card */
+.feed-event-card {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--text-muted);
+    overflow: hidden;
+    transition: all 0.3s;
+}
+
+.feed-event-card.granted {
+    border-left-color: var(--success);
+}
+
+.feed-event-card.denied {
+    border-left-color: var(--danger);
+}
+
+.feed-event-card.new {
+    animation: slide-in 0.3s ease;
+}
+
+@keyframes slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.feed-event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0,0,0,0.2);
+    font-size: 0.75rem;
+}
+
+.feed-camera-name {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.feed-event-time {
+    color: var(--text-muted);
+}
+
+.feed-event-body {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+}
+
+.feed-event-image {
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--bg-hover);
+}
+
+.feed-event-info {
+    flex: 1;
+}
+
+.feed-event-plate {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--text-primary);
+}
+
+.feed-event-owner {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.feed-event-unit {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.feed-event-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+}
+
+/* WebSocket status */
+.ws-status {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+}
+
+.ws-status.connected {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+}
+
+.ws-status.disconnected {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+}
+
+.camera-actions-header {
+    display: flex;
+    gap: 0.5rem;
 }

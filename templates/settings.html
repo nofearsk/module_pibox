@@ -2,6 +2,39 @@
 
 {% block title %}Settings - PiBox{% endblock %}
 
+{% block extra_css %}
+<style>
+    .danger-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: rgba(220, 53, 69, 0.1);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        border-radius: 8px;
+    }
+    .danger-info {
+        flex: 1;
+    }
+    .danger-info strong {
+        color: #f3f4f6;
+    }
+    .btn-danger {
+        background: linear-gradient(135deg, #dc3545, #c82333);
+        color: #fff;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        min-width: 120px;
+    }
+    .btn-danger:hover {
+        background: linear-gradient(135deg, #c82333, #bd2130);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page">
     <div class="page-header">
@@ -139,6 +172,87 @@
             </form>
         </div>
     </div>
+
+    <!-- Web Relay Configuration (Iotzone V5+ Ethernet Relay) -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Web Relay (Iotzone V5+)</h2>
+            <span id="web-relay-status" class="badge {% if config.web_relay_enabled == 'true' %}success{% else %}{% endif %}">
+                {{ 'Enabled' if config.web_relay_enabled == 'true' else 'Disabled' }}
+            </span>
+        </div>
+        <div class="card-body">
+            <p style="color: #888; margin-bottom: 15px;">
+                Optional: Use Iotzone V5+ 8-Channel Ethernet Relay instead of GPIO pins.
+                When enabled, relay control is sent via HTTP to the relay board.
+            </p>
+            <form id="web-relay-form" onsubmit="saveWebRelayConfig(event)">
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="web-relay-enabled" {% if config.web_relay_enabled == 'true' %}checked{% endif %}>
+                        Enable Web Relay
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Relay Board IP Address</label>
+                    <input type="text" id="web-relay-ip" value="{{ config.web_relay_ip }}" placeholder="192.168.1.166">
+                </div>
+                <div class="form-group">
+                    <label>HTTP Port</label>
+                    <input type="number" id="web-relay-port" value="{{ config.web_relay_port or 80 }}" placeholder="80">
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="web-relay-username" value="{{ config.web_relay_username or 'admin' }}" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="web-relay-password" value="{{ config.web_relay_password }}" placeholder="12345678">
+                </div>
+                <div class="form-group">
+                    <label>Pulse Time (seconds) - set on relay board</label>
+                    <input type="number" id="web-relay-pulse-time" value="{{ config.web_relay_pulse_time or 1.0 }}" min="0.1" max="600" step="0.1">
+                    <small>This should match the pulse time configured on the relay board's I/O Settings page</small>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Web Relay Settings</button>
+                    <button type="button" onclick="testWebRelay()" class="btn">Test Connection</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card" style="border-color: #dc3545;">
+        <div class="card-header" style="background: linear-gradient(145deg, #3d1a1a, #2d1515); border-bottom: 1px solid #dc3545;">
+            <h2 style="color: #dc3545;">Danger Zone</h2>
+        </div>
+        <div class="card-body">
+            <div class="danger-actions">
+                <div class="danger-item">
+                    <div class="danger-info">
+                        <strong>Logout from Odoo</strong>
+                        <p style="color: #888; margin: 5px 0 0;">Disconnect from Odoo server. You'll need to login again.</p>
+                    </div>
+                    <button onclick="doLogout()" class="btn btn-danger">Logout</button>
+                </div>
+                <div class="danger-item" style="margin-top: 20px;">
+                    <div class="danger-info">
+                        <strong>Clear All Data</strong>
+                        <p style="color: #888; margin: 5px 0 0;">Delete all vehicles, access logs, cameras, and images. Does not affect Odoo settings.</p>
+                    </div>
+                    <button onclick="clearAllData()" class="btn btn-danger">Clear Data</button>
+                </div>
+                <div class="danger-item" style="margin-top: 20px;">
+                    <div class="danger-info">
+                        <strong>Factory Reset</strong>
+                        <p style="color: #888; margin: 5px 0 0;">Clear all data AND logout. Resets PiBox to initial state.</p>
+                    </div>
+                    <button onclick="factoryReset()" class="btn btn-danger">Factory Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -205,7 +319,45 @@
         saveConfig(data);
     }
 
-    function saveConfig(data) {
+    function saveWebRelayConfig(e) {
+        e.preventDefault();
+        const data = {
+            web_relay_enabled: document.getElementById('web-relay-enabled').checked ? 'true' : 'false',
+            web_relay_ip: document.getElementById('web-relay-ip').value,
+            web_relay_port: document.getElementById('web-relay-port').value,
+            web_relay_username: document.getElementById('web-relay-username').value,
+            web_relay_password: document.getElementById('web-relay-password').value,
+            web_relay_pulse_time: document.getElementById('web-relay-pulse-time').value
+        };
+        saveConfig(data, function() {
+            // Update badge
+            const badge = document.getElementById('web-relay-status');
+            if (data.web_relay_enabled === 'true') {
+                badge.className = 'badge success';
+                badge.textContent = 'Enabled';
+            } else {
+                badge.className = 'badge';
+                badge.textContent = 'Disabled';
+            }
+        });
+    }
+
+    function testWebRelay() {
+        fetch('/api/web-relay/test', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Web relay connection successful!\n\n' + (data.message || 'Connected'));
+                } else {
+                    alert('Web relay test failed:\n\n' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Error testing web relay: ' + err);
+            });
+    }
+
+    function saveConfig(data, callback) {
         fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -215,10 +367,59 @@
         .then(result => {
             if (result.success) {
                 showToast('Settings saved');
+                if (callback) callback();
             } else {
                 alert('Error: ' + result.error);
             }
         });
+    }
+
+    // Danger Zone Functions
+    function doLogout() {
+        if (!confirm('Are you sure you want to logout from Odoo?')) return;
+
+        fetch('/api/auth/logout', { method: 'POST' })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('Logged out successfully');
+                    setTimeout(() => window.location.href = '/login', 1000);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            });
+    }
+
+    function clearAllData() {
+        if (!confirm('This will delete ALL local data (vehicles, logs, cameras, images).\n\nAre you sure?')) return;
+        if (!confirm('This action cannot be undone!\n\nClick OK to confirm.')) return;
+
+        fetch('/api/system/clear-data', { method: 'POST' })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('All data cleared');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            });
+    }
+
+    function factoryReset() {
+        if (!confirm('FACTORY RESET will:\n- Delete all vehicles, logs, cameras\n- Delete all images\n- Clear all settings\n- Logout from Odoo\n\nAre you absolutely sure?')) return;
+        if (!confirm('This will reset PiBox to initial state!\n\nClick OK to confirm factory reset.')) return;
+
+        fetch('/api/system/factory-reset', { method: 'POST' })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('Factory reset complete');
+                    setTimeout(() => window.location.href = '/login', 1500);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            });
     }
 </script>
 {% endblock %}

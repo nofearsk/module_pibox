@@ -30,7 +30,17 @@
       "Bash(admin@192.168.1.238:/home/admin/pibox/database/)",
       "Bash(/odoo/custom/addons/module_pibox/services/odoo_api.py )",
       "Bash(/odoo/custom/addons/module_pibox/templates/barriers.html )",
-      "Bash(/odoo/custom/addons/module_pibox/routes/web_routes.py )"
+      "Bash(/odoo/custom/addons/module_pibox/routes/web_routes.py )",
+      "Bash(git push:*)",
+      "Bash(/odoo/custom/addons/module_pibox/database/models.py admin@192.168.1.238:/home/admin/pibox/database/)",
+      "Bash(/odoo/custom/addons/module_pibox/routes/web_routes.py admin@192.168.1.238:/home/admin/pibox/routes/)",
+      "Bash(/odoo/custom/addons/module_pibox/templates/vehicles.html admin@192.168.1.238:/home/admin/pibox/templates/)",
+      "Bash(/odoo/custom/addons/module_pibox/routes/anpr_routes.py admin@192.168.1.238:/home/admin/pibox/routes/)",
+      "Bash(\"sudo systemctl restart pibox && sleep 2 && sudo systemctl status pibox --no-pager\")",
+      "Bash(/odoo/custom/addons/module_pibox/services/web_relay_service.py )",
+      "Bash(/odoo/custom/addons/module_pibox/services/relay_service.py )",
+      "Bash(/odoo/custom/addons/module_pibox/config.py admin@192.168.1.238:/home/admin/pibox/)",
+      "Bash(/odoo/custom/addons/module_pibox/templates/vehicles.html )"
     ]
   }
 }

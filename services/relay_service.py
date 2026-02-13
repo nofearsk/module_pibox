@@ -1,6 +1,10 @@
 """
 Relay/GPIO Control Service
-Controls 8-channel relay board via GPIO
+Controls 8-channel relay board via GPIO or Web Relay (Iotzone V5+)
+
+Supports two modes:
+- GPIO: Direct control via Raspberry Pi GPIO pins
+- Web Relay: HTTP control of Iotzone V5+ 8-Channel Ethernet Relay
 """
 import threading
 import time
@@ -48,6 +52,22 @@ class RelayService:
         self.relay_states = {i: False for i in range(1, 9)}
         self.relay_names = {i: f"Relay {i}" for i in range(1, 9)}
         self._lock = threading.Lock()
+        self._web_relay = None
+
+    def _get_web_relay(self):
+        """Lazy load web relay service"""
+        if self._web_relay is None:
+            from services.web_relay_service import web_relay_service
+            self._web_relay = web_relay_service
+        return self._web_relay
+
+    def _use_web_relay(self):
+        """Check if web relay should be used"""
+        try:
+            from config import config
+            return config.get('web_relay_enabled', 'false') == 'true'
+        except Exception:
+            return False
 
     def init_gpio(self):
         """Initialize GPIO pins"""
@@ -96,6 +116,10 @@ class RelayService:
         Returns:
             bool: Success status
         """
+        # Check if web relay is enabled
+        if self._use_web_relay():
+            return self._get_web_relay().set_relay(channel, state)
+
         if channel not in self.RELAY_PINS:
             logger.warning(f"Invalid relay channel: {channel}")
             return False
@@ -119,13 +143,30 @@ class RelayService:
         Returns:
             bool: Success status
         """
+        # Check if web relay is enabled
+        if self._use_web_relay():
+            return self._get_web_relay().pulse_relay(channel, duration)
+
         if channel not in self.RELAY_PINS:
             return False
 
         def pulse_thread():
-            self.set_relay(channel, True)
+            # Use GPIO directly for pulse to avoid recursion
+            with self._lock:
+                if GPIO_AVAILABLE and self.gpio_handle:
+                    pin = self.RELAY_PINS[channel]
+                    lgpio.gpio_write(self.gpio_handle, pin, 0)  # ON
+                self.relay_states[channel] = True
+            logger.info(f"Relay {channel} ON")
+
             time.sleep(duration)
-            self.set_relay(channel, False)
+
+            with self._lock:
+                if GPIO_AVAILABLE and self.gpio_handle:
+                    pin = self.RELAY_PINS[channel]
+                    lgpio.gpio_write(self.gpio_handle, pin, 1)  # OFF
+                self.relay_states[channel] = False
+            logger.info(f"Relay {channel} OFF")
 
         thread = threading.Thread(target=pulse_thread, daemon=True)
         thread.start()
@@ -139,12 +180,28 @@ class RelayService:
             channels: List of relay channels
             duration: Pulse duration in seconds
         """
+        # Check if web relay is enabled
+        if self._use_web_relay():
+            return self._get_web_relay().pulse_multiple(channels, duration)
+
         def pulse_thread():
+            # Turn all ON
             for ch in channels:
-                self.set_relay(ch, True)
+                with self._lock:
+                    if GPIO_AVAILABLE and self.gpio_handle and ch in self.RELAY_PINS:
+                        pin = self.RELAY_PINS[ch]
+                        lgpio.gpio_write(self.gpio_handle, pin, 0)
+                    self.relay_states[ch] = True
+
             time.sleep(duration)
+
+            # Turn all OFF
             for ch in channels:
-                self.set_relay(ch, False)
+                with self._lock:
+                    if GPIO_AVAILABLE and self.gpio_handle and ch in self.RELAY_PINS:
+                        pin = self.RELAY_PINS[ch]
+                        lgpio.gpio_write(self.gpio_handle, pin, 1)
+                    self.relay_states[ch] = False
 
         thread = threading.Thread(target=pulse_thread, daemon=True)
         thread.start()
@@ -153,10 +210,19 @@ class RelayService:
 
     def get_state(self, channel):
         """Get relay state"""
+        if self._use_web_relay():
+            return self._get_web_relay().get_state(channel)
         return self.relay_states.get(channel, False)
 
     def get_all_states(self):
         """Get all relay states"""
+        if self._use_web_relay():
+            web_states = self._get_web_relay().get_all_states()
+            # Add custom names
+            for ch in web_states:
+                web_states[ch]["name"] = self.relay_names.get(ch, f"Web Relay {ch}")
+            return web_states
+
         return {
             ch: {
                 "name": self.relay_names[ch],
@@ -165,6 +231,10 @@ class RelayService:
             }
             for ch, state in self.relay_states.items()
         }
+
+    def get_mode(self):
+        """Get current relay mode"""
+        return 'web' if self._use_web_relay() else 'gpio'
 
     def set_relay_name(self, channel, name):
         """Set custom name for relay"""

@@ -393,15 +393,15 @@ class OdooAPI:
 
         Args:
             site_id: Filter by site ID (optional)
-            active_only: Only return active vehicles
+            active_only: Only return active vehicles (ignored - model has no active field)
 
         Returns:
             list: Vehicle records
         """
         domain = []
 
-        if active_only:
-            domain.append(('active', '=', True))
+        # Note: units.vehicles model doesn't have 'active' field
+        # so we don't filter by it
 
         if site_id:
             domain.append(('site_id', '=', int(site_id)))
@@ -410,7 +410,7 @@ class OdooAPI:
             'units.vehicles',
             domain=domain,
             fields=['id', 'vehicle_number', 'iunumber', 'unit_id', 'name',
-                    'validfrom', 'validto', 'active']
+                    'validfrom', 'validto', 'owner_id', 'partner_id', 'owner_name']
         )
 
     def get_locations(self, site_id=None, active_only=True):
@@ -419,15 +419,15 @@ class OdooAPI:
 
         Args:
             site_id: Filter by site ID (optional)
-            active_only: Only return active locations
+            active_only: Only return active locations (ignored - model may not have active field)
 
         Returns:
             list: Location records
         """
         domain = []
 
-        if active_only:
-            domain.append(('active', '=', True))
+        # Note: site.location model may not have 'active' field
+        # so we don't filter by it
 
         if site_id:
             domain.append(('site_id', '=', int(site_id)))
@@ -435,8 +435,7 @@ class OdooAPI:
         return self.search_read(
             'site.location',
             domain=domain,
-            fields=['id', 'site_id', 'name', 'code', 'camera_ip_address',
-                    'parent_id', 'active'],
+            fields=['id', 'site_id', 'name', 'code'],
             limit=500
         )
 
@@ -453,6 +452,8 @@ class OdooAPI:
         """
         domain = []
 
+        # Try to filter by active if the field exists
+        # (location.devices.anprfeed has active field)
         if active_only:
             domain.append(('active', '=', True))
 

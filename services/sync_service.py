@@ -81,13 +81,23 @@ class SyncService:
                 if plate:
                     plate = str(plate).strip().upper().replace(' ', '')
 
+                # Extract owner name from various possible fields
+                # Try owner_name (text), owner_id (Many2one), partner_id (Many2one)
+                owner_name = None
+                if v.get('owner_name'):
+                    owner_name = v.get('owner_name')
+                elif isinstance(v.get('owner_id'), (list, tuple)) and len(v.get('owner_id')) > 1:
+                    owner_name = v.get('owner_id')[1]
+                elif isinstance(v.get('partner_id'), (list, tuple)) and len(v.get('partner_id')) > 1:
+                    owner_name = v.get('partner_id')[1]
+
                 vehicle_list.append({
                     'id': v.get('id'),
                     'plate': plate,
                     'iu_number': v.get('iunumber'),
                     'unit_id': v.get('unit_id')[0] if isinstance(v.get('unit_id'), (list, tuple)) else v.get('unit_id'),
                     'unit_name': v.get('unit_id')[1] if isinstance(v.get('unit_id'), (list, tuple)) else None,
-                    'owner_name': None,  # Not provided in units.vehicles
+                    'owner_name': owner_name,
                     'valid_from': v.get('validfrom'),
                     'valid_to': v.get('validto'),
                 })
@@ -184,12 +194,15 @@ class SyncService:
             api = self._get_api()
             cfg = self._get_config()
 
+            # Use site_id from log_data first, fall back to config
+            site_id = log_data.get('site_id') or cfg.site_id
+
             log_id = api.create_access_log(
                 plate=log_data['plate'],
                 timestamp=log_data['timestamp'],
                 access_granted=log_data.get('access_granted'),
                 vehicle_type=log_data.get('vehicle_type'),
-                site_id=cfg.site_id if cfg.site_id else None,
+                site_id=site_id,
                 location_id=log_data.get('location_id'),
                 plate_image_url=log_data.get('plate_image_url'),
                 vehicle_image_url=log_data.get('vehicle_image_url'),
@@ -218,8 +231,17 @@ class SyncService:
             try:
                 cfg = self._get_config()
 
-                # location_id should be provided from camera reg_code lookup
-                # No need to look it up from barrier_mapping anymore
+                # Get site_id from config, or from ANPR camera if not configured
+                site_id = cfg.site_id
+                if not site_id and location_id:
+                    # Try to get site_id from ANPR camera based on location_id
+                    from database.models import AnprCameraModel
+                    cameras = AnprCameraModel.get_by_location(location_id)
+                    if cameras and len(cameras) > 0:
+                        camera = dict(cameras[0])
+                        if camera.get('site_id'):
+                            site_id = camera['site_id']
+                            logger.info(f"Using site_id {site_id} from ANPR camera (location_id: {location_id})")
 
                 log_data = {
                     'plate': plate,
@@ -228,7 +250,7 @@ class SyncService:
                     'vehicle_type': vehicle_type,
                     'plate_image_url': plate_image_url,
                     'vehicle_image_url': vehicle_image_url,
-                    'site_id': cfg.site_id,
+                    'site_id': site_id,
                     'location_id': location_id,
                     'unit_id': unit_id,
                     'iu_number': iu_number
@@ -238,7 +260,7 @@ class SyncService:
                 # Update local record with Odoo ID
                 from database.models import AccessLogModel
                 AccessLogModel.mark_synced(log_id, odoo_log_id)
-                logger.info(f"Access log {log_id} synced to Odoo as {odoo_log_id} (location_id: {location_id})")
+                logger.info(f"Access log {log_id} synced to Odoo as {odoo_log_id} (location_id: {location_id}, site_id: {site_id})")
 
             except Exception as e:
                 logger.error(f"Async push failed: {e}")
@@ -248,7 +270,7 @@ class SyncService:
 
     def process_queue(self):
         """Process pending items in upload queue"""
-        from database.models import UploadQueueModel
+        from database.models import UploadQueueModel, AnprCameraModel
 
         # Process Odoo logs
         pending = UploadQueueModel.get_pending('odoo_log', limit=20)
@@ -266,6 +288,15 @@ class SyncService:
                             payload['timestamp'] = dt.strftime('%Y-%m-%d %H:%M:%S')
                         except ValueError:
                             pass  # Keep original if parsing fails
+
+                # Ensure site_id is set - get from ANPR camera if missing
+                if not payload.get('site_id') and payload.get('location_id'):
+                    cameras = AnprCameraModel.get_by_location(payload['location_id'])
+                    if cameras and len(cameras) > 0:
+                        camera = dict(cameras[0])
+                        if camera.get('site_id'):
+                            payload['site_id'] = camera['site_id']
+                            logger.info(f"Queue: Using site_id {payload['site_id']} from ANPR camera")
 
                 self.push_access_log(payload)
                 UploadQueueModel.mark_completed(item['id'])

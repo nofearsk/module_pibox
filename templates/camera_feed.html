@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Camera Feed - PiBox{% endblock %}
+
+{% block content %}
+<div class="page">
+    <div class="page-header">
+        <h1>Live Camera Feed</h1>
+        <div class="header-actions">
+            <span class="ws-status" id="ws-indicator">Connecting...</span>
+        </div>
+    </div>
+
+    <!-- Camera Selection -->
+    <div class="card">
+        <div class="card-header section-header">
+            <h2>Select Cameras</h2>
+            <div class="camera-actions-header">
+                <button onclick="subscribeAll()" class="btn btn-sm">Select All</button>
+                <button onclick="unsubscribeAll()" class="btn btn-sm">Clear All</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="camera-selector" id="camera-selector">
+                <!-- Camera chips loaded via JS -->
+                <span class="loading-text">Loading cameras...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Feed -->
+    <div class="card">
+        <div class="card-header section-header">
+            <h2>Live Detections</h2>
+            <span class="badge" id="event-count">0 events</span>
+        </div>
+        <div class="card-body">
+            <div class="camera-feed-grid" id="feed-container">
+                <div class="empty-feed" id="empty-message">
+                    <p>Select cameras above to start receiving live detections</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let ws = null;
+    let cameras = [];
+    let subscriptions = new Set();
+    let eventCount = 0;
+    const maxEvents = 50;
+
+    // Load cameras on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCameras();
+        connectWebSocket();
+    });
+
+    function loadCameras() {
+        fetch('/api/anpr-cameras')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    cameras = data.cameras;
+                    renderCameraChips();
+                }
+            })
+            .catch(err => {
+                console.error('Failed to load cameras:', err);
+                document.getElementById('camera-selector').innerHTML =
+                    '<span class="error-text">Failed to load cameras</span>';
+            });
+    }
+
+    function renderCameraChips() {
+        const container = document.getElementById('camera-selector');
+        if (cameras.length === 0) {
+            container.innerHTML = '<span class="no-cameras">No cameras configured. Sync from Odoo first.</span>';
+            return;
+        }
+
+        container.innerHTML = cameras.map(cam => `
+            <div class="camera-select-chip ${subscriptions.has(cam.reg_code) ? 'selected' : ''}"
+                 data-regcode="${cam.reg_code}"
+                 data-name="${cam.name}"
+                 onclick="toggleCamera('${cam.reg_code}')">
+                <span class="chip-indicator"></span>
+                <span class="chip-name">${cam.name || 'Unnamed'}</span>
+                <span class="chip-count" id="count-${cam.reg_code}">0</span>
+            </div>
+        `).join('');
+    }
+
+    function toggleCamera(regCode) {
+        if (subscriptions.has(regCode)) {
+            unsubscribeCamera(regCode);
+        } else {
+            subscribeCamera(regCode);
+        }
+    }
+
+    function subscribeCamera(regCode) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: 'subscribe', camera: regCode }));
+            subscriptions.add(regCode);
+            updateChipState(regCode, true);
+            updateEmptyMessage();
+        }
+    }
+
+    function unsubscribeCamera(regCode) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: 'unsubscribe', camera: regCode }));
+            subscriptions.delete(regCode);
+            updateChipState(regCode, false);
+            updateEmptyMessage();
+        }
+    }
+
+    function subscribeAll() {
+        cameras.forEach(cam => {
+            if (!subscriptions.has(cam.reg_code)) {
+                subscribeCamera(cam.reg_code);
+            }
+        });
+    }
+
+    function unsubscribeAll() {
+        cameras.forEach(cam => {
+            if (subscriptions.has(cam.reg_code)) {
+                unsubscribeCamera(cam.reg_code);
+            }
+        });
+    }
+
+    function updateChipState(regCode, selected) {
+        const chip = document.querySelector(`.camera-select-chip[data-regcode="${regCode}"]`);
+        if (chip) {
+            chip.classList.toggle('selected', selected);
+        }
+    }
+
+    function updateEmptyMessage() {
+        const empty = document.getElementById('empty-message');
+        if (subscriptions.size > 0) {
+            empty.style.display = 'none';
+        } else {
+            empty.style.display = 'block';
+        }
+    }
+
+    function connectWebSocket() {
+        const wsUrl = `ws://${window.location.hostname}:8081`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            document.getElementById('ws-indicator').className = 'ws-status connected';
+            document.getElementById('ws-indicator').textContent = 'Connected';
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            document.getElementById('ws-indicator').className = 'ws-status disconnected';
+            document.getElementById('ws-indicator').textContent = 'Disconnected';
+            // Reconnect after 3 seconds
+            setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            } catch (e) {
+                console.error('Failed to parse message:', e);
+            }
+        };
+    }
+
+    function handleMessage(data) {
+        if (data.type === 'camera_event') {
+            addFeedEvent(data.camera, data.data);
+        } else if (data.type === 'subscribed' || data.type === 'subscribed_all') {
+            // Update local subscriptions from server response
+            if (data.subscriptions) {
+                subscriptions = new Set(data.subscriptions);
+                renderCameraChips();
+                updateEmptyMessage();
+            }
+        }
+    }
+
+    function addFeedEvent(regCode, eventData) {
+        const container = document.getElementById('feed-container');
+        const empty = document.getElementById('empty-message');
+        empty.style.display = 'none';
+
+        // Find camera name
+        const cam = cameras.find(c => c.reg_code === regCode);
+        const cameraName = cam ? cam.name : regCode;
+
+        // Create event card
+        const card = document.createElement('div');
+        card.className = `feed-event-card ${eventData.access_granted ? 'granted' : 'denied'} new`;
+        card.innerHTML = `
+            <div class="feed-event-header">
+                <span class="feed-camera-name">${cameraName}</span>
+                <span class="feed-event-time">${new Date().toLocaleTimeString()}</span>
+            </div>
+            <div class="feed-event-body">
+                ${eventData.image_url ? `<img src="${eventData.image_url}" alt="${eventData.plate}" class="feed-event-image">` : ''}
+                <div class="feed-event-info">
+                    <div class="feed-event-plate">${eventData.plate}</div>
+                    <div class="feed-event-owner">${eventData.owner_name || 'Unknown'}</div>
+                    <div class="feed-event-unit">${eventData.unit_name || '-'}</div>
+                </div>
+                <div class="feed-event-status">
+                    <span class="status-badge ${eventData.access_granted ? 'success' : 'danger'}">
+                        ${eventData.access_granted ? 'GRANTED' : 'DENIED'}
+                    </span>
+                    ${eventData.relay_triggered && eventData.relay_triggered.length > 0 ?
+                        `<span class="relay-tag">R${eventData.relay_triggered.join(',')}</span>` : ''}
+                </div>
+            </div>
+        `;
+
+        // Insert at top
+        container.insertBefore(card, container.firstChild);
+
+        // Remove 'new' class after animation
+        setTimeout(() => card.classList.remove('new'), 500);
+
+        // Update event count
+        eventCount++;
+        document.getElementById('event-count').textContent = `${eventCount} events`;
+
+        // Update camera chip count
+        const countEl = document.getElementById(`count-${regCode}`);
+        if (countEl) {
+            const count = parseInt(countEl.textContent) + 1;
+            countEl.textContent = count;
+            countEl.classList.add('updated');
+            setTimeout(() => countEl.classList.remove('updated'), 300);
+        }
+
+        // Limit events in DOM
+        const events = container.querySelectorAll('.feed-event-card');
+        if (events.length > maxEvents) {
+            events[events.length - 1].remove();
+        }
+    }
+</script>
+{% endblock %}

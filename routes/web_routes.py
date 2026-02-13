@@ -79,12 +79,27 @@ def dashboard():
 @web_bp.route('/vehicles')
 @require_auth
 def vehicles():
-    """Vehicles list page"""
+    """Vehicles list page with pagination"""
     try:
-        vehicles = VehicleModel.get_all()
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+
+        # Limit per_page to reasonable values
+        per_page = min(max(per_page, 10), 100)
+
+        total = VehicleModel.count(search=search if search else None)
+        vehicles = VehicleModel.get_paginated(page=page, per_page=per_page, search=search if search else None)
+
+        total_pages = (total + per_page - 1) // per_page  # Ceiling division
+
         return render_template('vehicles.html',
             vehicles=vehicles,
-            total=len(vehicles)
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            search=search
         )
     except Exception as e:
         logger.error(f"Vehicles page error: {e}")
@@ -94,13 +109,40 @@ def vehicles():
 @web_bp.route('/logs')
 @require_auth
 def logs():
-    """Access logs page"""
+    """Access logs page with pagination"""
     try:
-        logs = AccessLogModel.get_recent(100)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        vehicle_type = request.args.get('type', '').strip()
+
+        # Limit per_page to reasonable values
+        per_page = min(max(per_page, 10), 100)
+
+        total = AccessLogModel.count(
+            vehicle_type=vehicle_type if vehicle_type else None,
+            search=search if search else None
+        )
+        logs_list = AccessLogModel.get_paginated(
+            page=page,
+            per_page=per_page,
+            vehicle_type=vehicle_type if vehicle_type else None,
+            search=search if search else None
+        )
+
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+
         stats = AccessLogModel.get_today_stats()
+
         return render_template('logs.html',
-            logs=logs,
-            stats=stats
+            logs=logs_list,
+            stats=stats,
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            search=search,
+            vehicle_type=vehicle_type
         )
     except Exception as e:
         logger.error(f"Logs page error: {e}")
@@ -159,4 +201,15 @@ def settings():
         )
     except Exception as e:
         logger.error(f"Settings page error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+@web_bp.route('/camera-feed')
+@require_auth
+def camera_feed():
+    """Live camera feed page with WebSocket subscriptions"""
+    try:
+        return render_template('camera_feed.html')
+    except Exception as e:
+        logger.error(f"Camera feed page error: {e}")
         return render_template('error.html', error=str(e))

@@ -7,10 +7,18 @@
     <div class="page-header">
         <h1>Access Logs</h1>
         <div class="header-actions">
-            <select id="filter-type" class="filter-select">
-                <option value="">All</option>
-                <option value="resident">Residents</option>
-                <option value="unknown">Unknown</option>
+            <form class="search-form" method="GET" action="/logs">
+                <input type="text" name="search" value="{{ search }}" placeholder="Search plate or camera...">
+                <input type="hidden" name="per_page" value="{{ per_page }}">
+                <button type="submit" class="btn btn-sm">Search</button>
+                {% if search %}
+                <a href="/logs?per_page={{ per_page }}" class="btn btn-sm">Clear</a>
+                {% endif %}
+            </form>
+            <select id="filter-type" class="filter-select" onchange="filterByType(this.value)">
+                <option value="">All Types</option>
+                <option value="resident" {% if vehicle_type == 'resident' %}selected{% endif %}>Residents</option>
+                <option value="unknown" {% if vehicle_type == 'unknown' %}selected{% endif %}>Unknown</option>
             </select>
         </div>
     </div>
@@ -19,7 +27,7 @@
     <div class="stats-grid stats-small">
         <div class="stat-card">
             <div class="stat-value">{{ stats.total }}</div>
-            <div class="stat-label">Total</div>
+            <div class="stat-label">Today Total</div>
         </div>
         <div class="stat-card stat-success">
             <div class="stat-value">{{ stats.granted }}</div>
@@ -40,7 +48,8 @@
                         <th>Plate</th>
                         <th>Owner</th>
                         <th>Unit</th>
-                        <th>Type</th>
+                        <th>Camera</th>
+                        <th>Relay</th>
                         <th>Status</th>
                         <th>Time</th>
                     </tr>
@@ -59,20 +68,72 @@
                         <td>{{ log.owner_name or '-' }}</td>
                         <td>{{ log.unit_name or '-' }}</td>
                         <td>
-                            <span class="type-badge {{ log.vehicle_type }}">
-                                {{ log.vehicle_type }}
-                            </span>
+                            {% if log.camera_name %}
+                            <span class="camera-tag">{{ log.camera_name }}</span>
+                            {% else %}
+                            <span class="no-thumb">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.relay_triggered %}
+                            <span class="relay-tag">R{{ log.relay_triggered }}</span>
+                            {% else %}
+                            <span class="no-thumb">-</span>
+                            {% endif %}
                         </td>
                         <td>
                             <span class="status-badge {% if log.access_granted %}success{% else %}danger{% endif %}">
                                 {{ 'Granted' if log.access_granted else 'Denied' }}
                             </span>
                         </td>
-                        <td>{{ log.timestamp }}</td>
+                        <td>{{ log.timestamp[0:16] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+
+            <!-- Pagination -->
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="/logs?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">First</a>
+                <a href="/logs?page={{ page - 1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">Prev</a>
+                {% else %}
+                <span class="disabled">First</span>
+                <span class="disabled">Prev</span>
+                {% endif %}
+
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                    <span class="current">{{ p }}</span>
+                    {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                    <a href="/logs?page={{ p }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">{{ p }}</a>
+                    {% elif p == page - 3 or p == page + 3 %}
+                    <span>...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page < total_pages %}
+                <a href="/logs?page={{ page + 1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">Next</a>
+                <a href="/logs?page={{ total_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">Last</a>
+                {% else %}
+                <span class="disabled">Next</span>
+                <span class="disabled">Last</span>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div class="pagination-info">
+                <span>Showing {{ ((page - 1) * per_page) + 1 }} - {{ [page * per_page, total] | min }} of {{ total }} entries</span>
+                <div class="page-size-selector">
+                    <span>Per page:</span>
+                    <select onchange="changePageSize(this.value)">
+                        <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                        <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                        <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                    </select>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -80,18 +141,22 @@
 
 {% block scripts %}
 <script>
-    const filterType = document.getElementById('filter-type');
-    const tbody = document.querySelector('#logs-table tbody');
+    function filterByType(type) {
+        const params = new URLSearchParams(window.location.search);
+        if (type) {
+            params.set('type', type);
+        } else {
+            params.delete('type');
+        }
+        params.set('page', '1');
+        window.location.href = '/logs?' + params.toString();
+    }
 
-    filterType.addEventListener('change', function() {
-        const type = this.value;
-        tbody.querySelectorAll('tr').forEach(row => {
-            if (!type || row.dataset.type === type) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    });
+    function changePageSize(size) {
+        const params = new URLSearchParams(window.location.search);
+        params.set('per_page', size);
+        params.set('page', '1');
+        window.location.href = '/logs?' + params.toString();
+    }
 </script>
 {% endblock %}

@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from . import anpr_bp
 from services.anpr_service import anpr_service
 from services.access_service import access_service
+from services.websocket_service import websocket_service
 from database.models import AnprCameraModel, LocationModel
 
 logger = logging.getLogger(__name__)
@@ -73,14 +74,12 @@ def hikfeed(code="", password=""):
         # Process multipart files
         for file_key in request.files:
             xml_file = request.files[file_key]
-            filename = xml_file.filename
-            # Use file_key (form field name) for matching, as real cameras use that
-            # Fall back to actual filename for compatibility
-            match_name = file_key if file_key else filename
-            logger.info(f"Processing file: key='{file_key}', filename='{filename}', match='{match_name}'")
+            filename = xml_file.filename or ''
+            # Use filename for type detection - camera may use random IDs as form field keys
+            logger.info(f"Processing file: key='{file_key}', filename='{filename}'")
 
             # Parse XML files (anpr.xml, ANPR.xml, or any .xml file)
-            if match_name.lower() == 'anpr.xml' or (match_name and match_name.lower().endswith('.xml')):
+            if filename.lower() == 'anpr.xml' or filename.lower().endswith('.xml'):
                 xml_data = xml_file.read()
                 logger.debug(f"Received XML data: {xml_data[:500]}...")
                 try:
@@ -120,19 +119,19 @@ def hikfeed(code="", password=""):
                     logger.error(f"Failed to parse anpr.xml: {e}")
 
             # Plate images (licensePlatePicture.jpg, licensePlatePicture_1.jpg)
-            elif match_name in ['licensePlatePicture.jpg', 'licensePlatePicture_1.jpg']:
+            elif filename.lower() in ['licenseplatepicture.jpg', 'licenseplatepicture_1.jpg']:
                 img_data = xml_file.read()
                 if img_data:
-                    images['plate'].append({'filename': match_name, 'data': img_data})
-                    logger.info(f"Received plate image: {match_name} ({len(img_data)} bytes)")
+                    images['plate'].append({'filename': filename, 'data': img_data})
+                    logger.info(f"Received plate image: {filename} ({len(img_data)} bytes)")
 
             # Detection/vehicle images (all 4 variants)
-            elif match_name in ['detectionPicture.jpg', 'detectionPicture_1.jpg',
-                              'pedestrianDetectionPicture.jpg', 'pedestrianDetectionPicture_1.jpg']:
+            elif filename.lower() in ['detectionpicture.jpg', 'detectionpicture_1.jpg',
+                              'pedestriandetectionpicture.jpg', 'pedestriandetectionpicture_1.jpg']:
                 img_data = xml_file.read()
                 if img_data:
-                    images['vehicle'].append({'filename': match_name, 'data': img_data})
-                    logger.info(f"Received vehicle image: {match_name} ({len(img_data)} bytes)")
+                    images['vehicle'].append({'filename': filename, 'data': img_data})
+                    logger.info(f"Received vehicle image: {filename} ({len(img_data)} bytes)")
 
         # Check if we got a plate number
         if not plate:
@@ -164,6 +163,20 @@ def hikfeed(code="", password=""):
             camera_name=camera['name'] if camera else None,
             reg_code=code  # For relay mapping from ANPR camera
         )
+
+        # Broadcast to camera subscribers via WebSocket
+        if code:
+            websocket_service.broadcast_camera_event(code, {
+                'plate': plate,
+                'access_granted': result['access_granted'],
+                'vehicle_type': result['vehicle_type'],
+                'camera_name': camera['name'] if camera else None,
+                'owner_name': result.get('vehicle_info', {}).get('owner_name') if result.get('vehicle_info') else None,
+                'unit_name': result.get('vehicle_info', {}).get('unit_name') if result.get('vehicle_info') else None,
+                'relay_triggered': result.get('barriers_triggered', []),
+                'image_url': f"/images/{result.get('image_path')}" if result.get('image_path') else None,
+                'log_id': result['log_id']
+            })
 
         return jsonify({
             'success': True,
@@ -274,6 +287,20 @@ def generic_event():
             reg_code=reg_code  # For relay mapping from ANPR camera
         )
 
+        # Broadcast to camera subscribers via WebSocket
+        if reg_code:
+            websocket_service.broadcast_camera_event(reg_code, {
+                'plate': plate,
+                'access_granted': result['access_granted'],
+                'vehicle_type': result['vehicle_type'],
+                'camera_name': camera['name'] if camera else None,
+                'owner_name': result.get('vehicle_info', {}).get('owner_name') if result.get('vehicle_info') else None,
+                'unit_name': result.get('vehicle_info', {}).get('unit_name') if result.get('vehicle_info') else None,
+                'relay_triggered': result.get('barriers_triggered', []),
+                'image_url': f"/images/{result.get('image_path')}" if result.get('image_path') else None,
+                'log_id': result['log_id']
+            })
+
         return jsonify({
             'success': True,
             'plate': plate,
@@ -314,6 +341,20 @@ def test_event():
         camera_name=camera['name'] if camera else None,
         reg_code=reg_code  # For relay mapping from ANPR camera
     )
+
+    # Broadcast to camera subscribers via WebSocket
+    if reg_code:
+        websocket_service.broadcast_camera_event(reg_code, {
+            'plate': plate,
+            'access_granted': result['access_granted'],
+            'vehicle_type': result['vehicle_type'],
+            'camera_name': camera['name'] if camera else None,
+            'owner_name': result.get('vehicle_info', {}).get('owner_name') if result.get('vehicle_info') else None,
+            'unit_name': result.get('vehicle_info', {}).get('unit_name') if result.get('vehicle_info') else None,
+            'relay_triggered': result.get('barriers_triggered', []),
+            'log_id': result['log_id'],
+            'test': True
+        })
 
     return jsonify({
         'success': True,

@@ -38,11 +38,34 @@ class VehicleModel:
         ).fetchall()
 
     @staticmethod
-    def count():
+    def count(search=None):
         """Count active vehicles"""
         db = get_db()
-        result = db.execute('SELECT COUNT(*) as cnt FROM vehicles WHERE active = 1').fetchone()
+        if search:
+            result = db.execute(
+                'SELECT COUNT(*) as cnt FROM vehicles WHERE active = 1 AND UPPER(plate) LIKE UPPER(?)',
+                (f'%{search}%',)
+            ).fetchone()
+        else:
+            result = db.execute('SELECT COUNT(*) as cnt FROM vehicles WHERE active = 1').fetchone()
         return result['cnt'] if result else 0
+
+    @staticmethod
+    def get_paginated(page=1, per_page=50, search=None):
+        """Get vehicles with pagination"""
+        db = get_db()
+        offset = (page - 1) * per_page
+
+        if search:
+            return db.execute(
+                'SELECT * FROM vehicles WHERE active = 1 AND UPPER(plate) LIKE UPPER(?) ORDER BY plate LIMIT ? OFFSET ?',
+                (f'%{search}%', per_page, offset)
+            ).fetchall()
+        else:
+            return db.execute(
+                'SELECT * FROM vehicles WHERE active = 1 ORDER BY plate LIMIT ? OFFSET ?',
+                (per_page, offset)
+            ).fetchall()
 
     @staticmethod
     def sync_from_odoo(vehicles):
@@ -135,7 +158,7 @@ class BarrierModel:
                 return json.loads(mapping['relay_channels'])
             except (json.JSONDecodeError, TypeError):
                 return [int(mapping['relay_channels'])]
-        return [1]  # Default to relay 1
+        return []  # No relay configured - don't trigger for unknown cameras
 
     @staticmethod
     def create(camera_ip, relay_channels, camera_name=None, direction='both', location_name=None, location_id=None):
@@ -182,15 +205,20 @@ class AccessLogModel:
 
     @staticmethod
     def create(plate, camera_ip, access_granted, vehicle_type, unit_name=None,
-               owner_name=None, image_path=None):
+               owner_name=None, image_path=None, camera_name=None, relay_triggered=None):
         """Create new access log entry"""
         db = get_db()
+        # Convert relay list to string if needed
+        if isinstance(relay_triggered, list):
+            relay_triggered = ','.join(str(r) for r in relay_triggered) if relay_triggered else None
         db.execute('''
-            INSERT INTO access_logs (plate, camera_ip, access_granted, vehicle_type,
-                                     unit_name, owner_name, image_path, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (plate, camera_ip, 1 if access_granted else 0, vehicle_type,
-              unit_name, owner_name, image_path, datetime.now().isoformat()))
+            INSERT INTO access_logs (plate, camera_ip, camera_name, relay_triggered,
+                                     access_granted, vehicle_type, unit_name, owner_name,
+                                     image_path, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (plate, camera_ip, camera_name, relay_triggered,
+              1 if access_granted else 0, vehicle_type, unit_name, owner_name,
+              image_path, datetime.now().isoformat()))
         db.commit()
         return db.execute('SELECT last_insert_rowid()').fetchone()[0]
 
@@ -205,6 +233,38 @@ class AccessLogModel:
             params.append(vehicle_type)
         query += ' ORDER BY timestamp DESC LIMIT ?'
         params.append(limit)
+        return db.execute(query, params).fetchall()
+
+    @staticmethod
+    def count(vehicle_type=None, search=None):
+        """Count access logs"""
+        db = get_db()
+        query = 'SELECT COUNT(*) as cnt FROM access_logs WHERE 1=1'
+        params = []
+        if vehicle_type:
+            query += ' AND vehicle_type = ?'
+            params.append(vehicle_type)
+        if search:
+            query += ' AND (UPPER(plate) LIKE UPPER(?) OR UPPER(camera_name) LIKE UPPER(?))'
+            params.extend([f'%{search}%', f'%{search}%'])
+        result = db.execute(query, params).fetchone()
+        return result['cnt'] if result else 0
+
+    @staticmethod
+    def get_paginated(page=1, per_page=50, vehicle_type=None, search=None):
+        """Get access logs with pagination"""
+        db = get_db()
+        offset = (page - 1) * per_page
+        query = 'SELECT * FROM access_logs WHERE 1=1'
+        params = []
+        if vehicle_type:
+            query += ' AND vehicle_type = ?'
+            params.append(vehicle_type)
+        if search:
+            query += ' AND (UPPER(plate) LIKE UPPER(?) OR UPPER(camera_name) LIKE UPPER(?))'
+            params.extend([f'%{search}%', f'%{search}%'])
+        query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
         return db.execute(query, params).fetchall()
 
     @staticmethod

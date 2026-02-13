@@ -43,6 +43,10 @@ class WebSocketService:
         self._running = False
         self._message_queue = []
         self._stats_interval = 30  # seconds
+        # Camera subscriptions: {websocket: set(reg_codes)}
+        self._camera_subscriptions = {}
+        # Camera-specific message queue: [(reg_code, message), ...]
+        self._camera_queue = []
 
     async def _handler(self, websocket, path=None):
         """Handle WebSocket connections"""
@@ -66,11 +70,15 @@ class WebSocketService:
             pass
         finally:
             self.clients.discard(websocket)
+            # Clean up camera subscriptions
+            if websocket in self._camera_subscriptions:
+                del self._camera_subscriptions[websocket]
             logger.info(f"WebSocket client disconnected: {client_ip} (total: {len(self.clients)})")
 
     async def _handle_message(self, websocket, data):
         """Handle incoming WebSocket messages"""
         msg_type = data.get('type')
+        action = data.get('action')
 
         if msg_type == 'ping':
             await websocket.send(json.dumps({'type': 'pong'}))
@@ -80,6 +88,51 @@ class WebSocketService:
 
         elif msg_type == 'get_status':
             await self._send_system_status(websocket)
+
+        # Camera subscription actions
+        elif action == 'subscribe':
+            camera = data.get('camera')  # reg_code
+            if camera:
+                if websocket not in self._camera_subscriptions:
+                    self._camera_subscriptions[websocket] = set()
+                self._camera_subscriptions[websocket].add(camera)
+                await websocket.send(json.dumps({
+                    'type': 'subscribed',
+                    'camera': camera,
+                    'subscriptions': list(self._camera_subscriptions[websocket])
+                }))
+                logger.debug(f"Client subscribed to camera: {camera}")
+
+        elif action == 'unsubscribe':
+            camera = data.get('camera')
+            if camera and websocket in self._camera_subscriptions:
+                self._camera_subscriptions[websocket].discard(camera)
+                await websocket.send(json.dumps({
+                    'type': 'unsubscribed',
+                    'camera': camera,
+                    'subscriptions': list(self._camera_subscriptions[websocket])
+                }))
+                logger.debug(f"Client unsubscribed from camera: {camera}")
+
+        elif action == 'subscribe_all':
+            # Subscribe to all cameras
+            from database.models import AnprCameraModel
+            cameras = AnprCameraModel.get_all()
+            if websocket not in self._camera_subscriptions:
+                self._camera_subscriptions[websocket] = set()
+            for cam in cameras:
+                self._camera_subscriptions[websocket].add(cam['reg_code'])
+            await websocket.send(json.dumps({
+                'type': 'subscribed_all',
+                'subscriptions': list(self._camera_subscriptions[websocket])
+            }))
+
+        elif action == 'get_subscriptions':
+            subs = list(self._camera_subscriptions.get(websocket, set()))
+            await websocket.send(json.dumps({
+                'type': 'subscriptions',
+                'subscriptions': subs
+            }))
 
     async def _send_stats(self, websocket):
         """Send current statistics"""
@@ -117,6 +170,25 @@ class WebSocketService:
 
         self.clients -= dead_clients
 
+    async def _broadcast_to_camera(self, reg_code, message):
+        """Broadcast message to clients subscribed to a specific camera"""
+        if isinstance(message, dict):
+            message = json.dumps(message)
+
+        dead_clients = set()
+        for client, subscriptions in list(self._camera_subscriptions.items()):
+            if reg_code in subscriptions:
+                try:
+                    await client.send(message)
+                except Exception:
+                    dead_clients.add(client)
+
+        # Clean up dead clients
+        for client in dead_clients:
+            self.clients.discard(client)
+            if client in self._camera_subscriptions:
+                del self._camera_subscriptions[client]
+
     async def _stats_loop(self):
         """Periodically broadcast stats"""
         while self._running:
@@ -145,9 +217,15 @@ class WebSocketService:
 
             # Process queued messages
             while self._running:
+                # Broadcast to all clients
                 while self._message_queue:
                     message = self._message_queue.pop(0)
                     await self._broadcast(message)
+
+                # Broadcast to camera subscribers
+                while self._camera_queue:
+                    reg_code, message = self._camera_queue.pop(0)
+                    await self._broadcast_to_camera(reg_code, message)
 
                 await asyncio.sleep(0.1)
 
@@ -195,6 +273,22 @@ class WebSocketService:
         }
         self._message_queue.append(message)
         logger.debug(f"Queued access event broadcast: {event_data.get('plate')}")
+
+    def broadcast_camera_event(self, reg_code, event_data):
+        """
+        Broadcast event to clients subscribed to a specific camera
+
+        Args:
+            reg_code: Camera registration code
+            event_data: dict with plate detection details
+        """
+        message = {
+            'type': 'camera_event',
+            'camera': reg_code,
+            'data': event_data
+        }
+        self._camera_queue.append((reg_code, message))
+        logger.debug(f"Queued camera event for {reg_code}: {event_data.get('plate')}")
 
     def broadcast_barrier_status(self, relay_states):
         """Broadcast barrier status update"""

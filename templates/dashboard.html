@@ -59,6 +59,14 @@
                                 Unknown Vehicle
                                 {% endif %}
                             </div>
+                            <div class="feed-meta">
+                                {% if log.camera_name %}
+                                <span class="camera-tag" title="Camera">📷 {{ log.camera_name }}</span>
+                                {% endif %}
+                                {% if log.relay_triggered %}
+                                <span class="relay-tag" title="Relay triggered">🔓 R{{ log.relay_triggered }}</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="feed-status">
                             <span class="status-badge {% if log.access_granted %}success{% else %}danger{% endif %}">

@@ -174,7 +174,13 @@ class AccessService:
             result['vehicle_type'] = 'unknown'
             logger.info(f"Access DENIED for {normalized_plate} - unknown vehicle")
 
-        # Create access log
+        # Get camera/barrier name for logging
+        display_name = camera_name
+        if not display_name and camera_ip:
+            barrier_mapping = BarrierModel.get_by_camera_ip(camera_ip)
+            display_name = barrier_mapping['camera_name'] if barrier_mapping else camera_ip
+
+        # Create access log with camera and relay info
         log_id = AccessLogModel.create(
             plate=normalized_plate,
             camera_ip=camera_ip,
@@ -182,15 +188,11 @@ class AccessService:
             vehicle_type=result['vehicle_type'],
             unit_name=result['vehicle_info']['unit_name'] if result['vehicle_info'] else None,
             owner_name=result['vehicle_info']['owner_name'] if result['vehicle_info'] else None,
-            image_path=plate_image_path or vehicle_image_path
+            image_path=plate_image_path or vehicle_image_path,
+            camera_name=display_name,
+            relay_triggered=result['barriers_triggered']
         )
         result['log_id'] = log_id
-
-        # Get camera/barrier name for broadcast
-        display_name = camera_name
-        if not display_name and camera_ip:
-            barrier_mapping = BarrierModel.get_by_camera_ip(camera_ip)
-            display_name = barrier_mapping['camera_name'] if barrier_mapping else camera_ip
 
         # Broadcast via WebSocket
         websocket_service.broadcast_access_event({

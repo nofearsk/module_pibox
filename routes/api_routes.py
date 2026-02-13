@@ -336,8 +336,41 @@ def get_relay_status():
     """Get all relay states"""
     return jsonify({
         'success': True,
+        'mode': relay_service.get_mode(),
         'relays': relay_service.get_all_states()
     })
+
+
+# ============== Web Relay (Iotzone V5+) ==============
+
+@api_bp.route('/api/web-relay/test', methods=['POST'])
+def test_web_relay():
+    """Test connection to Iotzone V5+ Ethernet Relay"""
+    try:
+        from services.web_relay_service import web_relay_service
+        result = web_relay_service.test_connection()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Web relay test error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/web-relay/status', methods=['GET'])
+def get_web_relay_status():
+    """Get web relay status"""
+    try:
+        from services.web_relay_service import web_relay_service
+        cfg = web_relay_service._get_config()
+        return jsonify({
+            'success': True,
+            'enabled': cfg['enabled'],
+            'ip': cfg['ip'],
+            'port': cfg['port'],
+            'last_error': web_relay_service.last_error,
+            'relays': web_relay_service.get_all_states()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @api_bp.route('/api/relay/<int:channel>/on', methods=['POST', 'GET'])
@@ -504,4 +537,93 @@ def test_s3_connection():
         success, message = s3_service.test_connection()
         return jsonify({'success': success, 'message': message})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============== System Management ==============
+
+@api_bp.route('/api/system/clear-data', methods=['POST'])
+def clear_all_data():
+    """Clear all local data (vehicles, logs, cameras, etc.)"""
+    try:
+        from database.db import get_db
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Clear all data tables
+        cursor.execute('DELETE FROM vehicles')
+        cursor.execute('DELETE FROM access_logs')
+        cursor.execute('DELETE FROM locations')
+        cursor.execute('DELETE FROM anpr_cameras')
+        cursor.execute('DELETE FROM barrier_mapping')
+        cursor.execute('DELETE FROM upload_queue')
+
+        conn.commit()
+
+        # Clear images directory
+        import shutil
+        if os.path.exists(IMAGES_DIR):
+            for filename in os.listdir(IMAGES_DIR):
+                filepath = os.path.join(IMAGES_DIR, filename)
+                try:
+                    if os.path.isfile(filepath):
+                        os.unlink(filepath)
+                except Exception:
+                    pass
+
+        logger.info("All local data cleared")
+        return jsonify({
+            'success': True,
+            'message': 'All data cleared successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Clear data error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/system/factory-reset', methods=['POST'])
+def factory_reset():
+    """Factory reset - clear all data AND logout"""
+    try:
+        from database.db import get_db
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Clear all data tables
+        cursor.execute('DELETE FROM vehicles')
+        cursor.execute('DELETE FROM access_logs')
+        cursor.execute('DELETE FROM locations')
+        cursor.execute('DELETE FROM anpr_cameras')
+        cursor.execute('DELETE FROM barrier_mapping')
+        cursor.execute('DELETE FROM upload_queue')
+        cursor.execute('DELETE FROM config')
+
+        conn.commit()
+
+        # Clear images
+        import shutil
+        if os.path.exists(IMAGES_DIR):
+            for filename in os.listdir(IMAGES_DIR):
+                filepath = os.path.join(IMAGES_DIR, filename)
+                try:
+                    if os.path.isfile(filepath):
+                        os.unlink(filepath)
+                except Exception:
+                    pass
+
+        # Logout from Odoo
+        odoo_api.logout()
+        config.clear_cache()
+
+        logger.info("Factory reset completed")
+        return jsonify({
+            'success': True,
+            'message': 'Factory reset completed'
+        })
+
+    except Exception as e:
+        logger.error(f"Factory reset error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500

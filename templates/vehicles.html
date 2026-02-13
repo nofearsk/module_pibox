@@ -3,11 +3,81 @@
 {% block title %}Vehicles - PiBox{% endblock %}
 
 {% block content %}
+<style>
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+    }
+    .pagination a, .pagination span {
+        padding: 8px 14px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 14px;
+    }
+    .pagination a {
+        background: #2a2a2a;
+        color: #fff;
+        border: 1px solid #3a3a3a;
+    }
+    .pagination a:hover {
+        background: #3a3a3a;
+    }
+    .pagination .current {
+        background: #4a9eff;
+        color: #fff;
+        font-weight: bold;
+    }
+    .pagination .disabled {
+        background: #1a1a1a;
+        color: #666;
+        cursor: not-allowed;
+    }
+    .pagination-info {
+        color: #888;
+        font-size: 13px;
+        margin: 0 10px;
+    }
+    .page-size-select {
+        background: #2a2a2a;
+        color: #fff;
+        border: 1px solid #3a3a3a;
+        padding: 6px 10px;
+        border-radius: 6px;
+        margin-left: 10px;
+    }
+    .search-form {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    .search-form input {
+        flex: 1;
+    }
+    .search-form button {
+        padding: 8px 16px;
+    }
+    .clear-search {
+        color: #ff6b6b;
+        text-decoration: none;
+        font-size: 13px;
+    }
+</style>
+
 <div class="page">
     <div class="page-header">
         <h1>Registered Vehicles</h1>
         <div class="header-actions">
-            <input type="text" id="search-input" placeholder="Search plate..." class="search-input">
+            <form class="search-form" method="get" action="/vehicles">
+                <input type="text" name="search" value="{{ search }}" placeholder="Search plate..." class="search-input">
+                <button type="submit" class="btn btn-primary">Search</button>
+                {% if search %}
+                <a href="/vehicles" class="clear-search">Clear</a>
+                {% endif %}
+            </form>
             <span class="badge">{{ total }} vehicles</span>
         </div>
     </div>
@@ -39,9 +109,75 @@
                             </span>
                         </td>
                     </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #888;">
+                            {% if search %}
+                            No vehicles found matching "{{ search }}"
+                            {% else %}
+                            No vehicles registered
+                            {% endif %}
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
+
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                <!-- Previous button -->
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">&laquo; Prev</a>
+                {% else %}
+                <span class="disabled">&laquo; Prev</span>
+                {% endif %}
+
+                <!-- Page numbers -->
+                {% set start_page = [1, page - 2]|max %}
+                {% set end_page = [total_pages, page + 2]|min %}
+
+                {% if start_page > 1 %}
+                <a href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">1</a>
+                {% if start_page > 2 %}
+                <span class="pagination-info">...</span>
+                {% endif %}
+                {% endif %}
+
+                {% for p in range(start_page, end_page + 1) %}
+                {% if p == page %}
+                <span class="current">{{ p }}</span>
+                {% else %}
+                <a href="?page={{ p }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">{{ p }}</a>
+                {% endif %}
+                {% endfor %}
+
+                {% if end_page < total_pages %}
+                {% if end_page < total_pages - 1 %}
+                <span class="pagination-info">...</span>
+                {% endif %}
+                <a href="?page={{ total_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">{{ total_pages }}</a>
+                {% endif %}
+
+                <!-- Next button -->
+                {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Next &raquo;</a>
+                {% else %}
+                <span class="disabled">Next &raquo;</span>
+                {% endif %}
+
+                <!-- Page info -->
+                <span class="pagination-info">
+                    Page {{ page }} of {{ total_pages }}
+                </span>
+
+                <!-- Per page selector -->
+                <select class="page-size-select" onchange="changePerPage(this.value)">
+                    <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                </select>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -49,42 +185,11 @@
 
 {% block scripts %}
 <script>
-    const searchInput = document.getElementById('search-input');
-    const table = document.getElementById('vehicles-table');
-    const tbody = table.querySelector('tbody');
-
-    searchInput.addEventListener('input', debounce(function() {
-        const query = this.value.trim();
-        if (query.length < 2) {
-            // Show all rows
-            tbody.querySelectorAll('tr').forEach(row => row.style.display = '');
-            return;
-        }
-
-        // Filter via API
-        fetch(`/api/vehicles/search?plate=${encodeURIComponent(query)}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const plates = new Set(data.vehicles.map(v => v.plate));
-                    tbody.querySelectorAll('tr').forEach(row => {
-                        const plate = row.querySelector('.plate-cell').textContent;
-                        row.style.display = plates.has(plate) ? '' : 'none';
-                    });
-                }
-            });
-    }, 300));
-
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func.apply(this, args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
+    function changePerPage(value) {
+        const url = new URL(window.location);
+        url.searchParams.set('per_page', value);
+        url.searchParams.set('page', '1');
+        window.location = url;
     }
 </script>
 {% endblock %}

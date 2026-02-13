@@ -93,6 +93,8 @@ def init_db(conn=None):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             plate TEXT NOT NULL,
             camera_ip TEXT,
+            camera_name TEXT,
+            relay_triggered TEXT,
             timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
             access_granted INTEGER,
             vehicle_type TEXT,
@@ -106,6 +108,16 @@ def init_db(conn=None):
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_timestamp ON access_logs(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_synced ON access_logs(odoo_synced)')
+
+    # Migration: Add camera_name and relay_triggered columns if not exist
+    try:
+        cursor.execute('ALTER TABLE access_logs ADD COLUMN camera_name TEXT')
+    except:
+        pass
+    try:
+        cursor.execute('ALTER TABLE access_logs ADD COLUMN relay_triggered TEXT')
+    except:
+        pass
 
     # Locations table (synced from Odoo site.location)
     cursor.execute('''
