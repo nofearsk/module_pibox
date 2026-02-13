@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiBox - Initial Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+
+        .setup-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .setup-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .setup-logo {
+            font-size: 48px;
+            color: #00d4ff;
+            margin-bottom: 16px;
+        }
+
+        .setup-title {
+            font-size: 24px;
+            color: #fff;
+            margin: 0;
+        }
+
+        .setup-subtitle {
+            color: #888;
+            margin-top: 8px;
+            font-size: 14px;
+        }
+
+        .setup-notice {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            color: #00d4ff;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-size: 16px;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        .form-group input::placeholder {
+            color: #666;
+        }
+
+        .btn-setup {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .btn-setup:hover {
+            opacity: 0.9;
+        }
+
+        .btn-setup:active {
+            transform: scale(0.98);
+        }
+
+        .error-message {
+            background: rgba(255, 82, 82, 0.1);
+            border: 1px solid rgba(255, 82, 82, 0.3);
+            color: #ff5252;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .password-requirements {
+            color: #666;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .setup-footer {
+            text-align: center;
+            margin-top: 24px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <div class="setup-logo">&#9635;</div>
+            <h1 class="setup-title">PiBox Setup</h1>
+            <p class="setup-subtitle">Create your admin password</p>
+        </div>
+
+        <div class="setup-notice">
+            First time setup - please create a password to secure your PiBox controller
+        </div>
+
+        {% if error %}
+        <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST">
+            <div class="form-group">
+                <label for="password">Admin Password</label>
+                <input type="password" id="password" name="password"
+                       placeholder="Enter password" required minlength="4">
+                <p class="password-requirements">Minimum 4 characters</p>
+            </div>
+
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password"
+                       placeholder="Confirm password" required minlength="4">
+            </div>
+
+            <button type="submit" class="btn-setup">
+                Set Password & Continue
+            </button>
+        </form>
+
+        <div class="setup-footer">
+            PiBox Vehicle Access Controller
+        </div>
+    </div>
+</body>
+</html>

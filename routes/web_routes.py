@@ -3,8 +3,10 @@ Web UI Routes
 Serves HTML pages for the web interface
 """
 from functools import wraps
-from flask import render_template, redirect, url_for, request
+from flask import render_template, redirect, url_for, request, session
 import logging
+import hashlib
+import secrets
 
 from . import web_bp
 from database.models import VehicleModel, BarrierModel, AccessLogModel, AnprCameraModel, LocationModel
@@ -17,17 +19,114 @@ from config import config
 logger = logging.getLogger(__name__)
 
 
-def require_auth(f):
-    """Decorator to require Odoo authentication"""
+def hash_password(password):
+    """Hash password with SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def require_admin(f):
+    """Decorator to require local admin authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if admin password is set
+        admin_hash = config.get('admin_password_hash', '')
+        if not admin_hash:
+            # No password set - redirect to setup
+            return redirect(url_for('web.admin_setup'))
+
+        # Check if logged in
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('web.admin_login'))
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def require_auth(f):
+    """Decorator to require Odoo authentication (after admin auth)"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # First check admin auth
+        admin_hash = config.get('admin_password_hash', '')
+        if not admin_hash:
+            return redirect(url_for('web.admin_setup'))
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('web.admin_login'))
+
+        # Then check Odoo auth
         if not config.is_configured:
             return redirect(url_for('web.login'))
         return f(*args, **kwargs)
     return decorated_function
 
 
+# ==================== Admin Authentication ====================
+
+@web_bp.route('/admin-setup', methods=['GET', 'POST'])
+def admin_setup():
+    """Initial admin password setup"""
+    # If password already set, redirect to login
+    if config.get('admin_password_hash', ''):
+        return redirect(url_for('web.admin_login'))
+
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
+
+        if len(password) < 4:
+            error = 'Password must be at least 4 characters'
+        elif password != confirm:
+            error = 'Passwords do not match'
+        else:
+            # Save hashed password
+            config.set('admin_password_hash', hash_password(password))
+            session['admin_logged_in'] = True
+            logger.info("Admin password set successfully")
+            return redirect(url_for('web.login'))
+
+    return render_template('admin_setup.html', error=error)
+
+
+@web_bp.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    """Admin login page"""
+    # If no password set, redirect to setup
+    if not config.get('admin_password_hash', ''):
+        return redirect(url_for('web.admin_setup'))
+
+    # If already logged in, redirect appropriately
+    if session.get('admin_logged_in'):
+        if config.is_configured:
+            return redirect(url_for('web.dashboard'))
+        return redirect(url_for('web.login'))
+
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        stored_hash = config.get('admin_password_hash', '')
+
+        if hash_password(password) == stored_hash:
+            session['admin_logged_in'] = True
+            logger.info("Admin login successful")
+            if config.is_configured:
+                return redirect(url_for('web.dashboard'))
+            return redirect(url_for('web.login'))
+        else:
+            error = 'Invalid password'
+
+    return render_template('admin_login.html', error=error)
+
+
+@web_bp.route('/admin-logout')
+def admin_logout():
+    """Admin logout"""
+    session.pop('admin_logged_in', None)
+    return redirect(url_for('web.admin_login'))
+
+
 @web_bp.route('/login')
+@require_admin
 def login():
     """Login page"""
     # If already configured, redirect to dashboard
