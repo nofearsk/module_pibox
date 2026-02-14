@@ -164,19 +164,7 @@ def hikfeed(code="", password=""):
             reg_code=code  # For relay mapping from ANPR camera
         )
 
-        # Broadcast to camera subscribers via WebSocket
-        if code:
-            websocket_service.broadcast_camera_event(code, {
-                'plate': plate,
-                'access_granted': result['access_granted'],
-                'vehicle_type': result['vehicle_type'],
-                'camera_name': camera['name'] if camera else None,
-                'owner_name': result.get('vehicle_info', {}).get('owner_name') if result.get('vehicle_info') else None,
-                'unit_name': result.get('vehicle_info', {}).get('unit_name') if result.get('vehicle_info') else None,
-                'relay_triggered': result.get('barriers_triggered', []),
-                'image_url': f"/images/{result.get('image_path')}" if result.get('image_path') else None,
-                'log_id': result['log_id']
-            })
+        # WebSocket broadcast is handled inside access_service.process_vehicle()
 
         return jsonify({
             'success': True,
@@ -287,19 +275,7 @@ def generic_event():
             reg_code=reg_code  # For relay mapping from ANPR camera
         )
 
-        # Broadcast to camera subscribers via WebSocket
-        if reg_code:
-            websocket_service.broadcast_camera_event(reg_code, {
-                'plate': plate,
-                'access_granted': result['access_granted'],
-                'vehicle_type': result['vehicle_type'],
-                'camera_name': camera['name'] if camera else None,
-                'owner_name': result.get('vehicle_info', {}).get('owner_name') if result.get('vehicle_info') else None,
-                'unit_name': result.get('vehicle_info', {}).get('unit_name') if result.get('vehicle_info') else None,
-                'relay_triggered': result.get('barriers_triggered', []),
-                'image_url': f"/images/{result.get('image_path')}" if result.get('image_path') else None,
-                'log_id': result['log_id']
-            })
+        # WebSocket broadcast is handled inside access_service.process_vehicle()
 
         return jsonify({
             'success': True,
@@ -342,19 +318,7 @@ def test_event():
         reg_code=reg_code  # For relay mapping from ANPR camera
     )
 
-    # Broadcast to camera subscribers via WebSocket
-    if reg_code:
-        websocket_service.broadcast_camera_event(reg_code, {
-            'plate': plate,
-            'access_granted': result['access_granted'],
-            'vehicle_type': result['vehicle_type'],
-            'camera_name': camera['name'] if camera else None,
-            'owner_name': result.get('vehicle_info', {}).get('owner_name') if result.get('vehicle_info') else None,
-            'unit_name': result.get('vehicle_info', {}).get('unit_name') if result.get('vehicle_info') else None,
-            'relay_triggered': result.get('barriers_triggered', []),
-            'log_id': result['log_id'],
-            'test': True
-        })
+    # WebSocket broadcast is handled inside access_service.process_vehicle()
 
     return jsonify({
         'success': True,

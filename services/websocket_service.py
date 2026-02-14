@@ -98,13 +98,14 @@ class WebSocketService:
                 if websocket not in self._camera_subscriptions:
                     self._camera_subscriptions[websocket] = {}
                 self._camera_subscriptions[websocket][camera] = filter_type
+                client_ip = websocket.remote_address[0] if websocket.remote_address else 'unknown'
                 await websocket.send(json.dumps({
                     'type': 'subscribed',
                     'camera': camera,
                     'filter': filter_type,
                     'subscriptions': list(self._camera_subscriptions[websocket].keys())
                 }))
-                logger.debug(f"Client subscribed to camera: {camera} with filter: {filter_type}")
+                logger.info(f"Client {client_ip} subscribed to camera: {camera} with filter: {filter_type}")
 
         elif action == 'unsubscribe':
             camera = data.get('camera')
@@ -185,7 +186,10 @@ class WebSocketService:
             access_granted = event_data.get('access_granted')
 
         dead_clients = set()
+        logger.info(f"Broadcasting to camera {reg_code}, {len(self._camera_subscriptions)} clients with subscriptions")
         for client, subscriptions in list(self._camera_subscriptions.items()):
+            client_ip = client.remote_address[0] if client.remote_address else 'unknown'
+            logger.info(f"  Client {client_ip} subscriptions: {list(subscriptions.keys())}")
             if reg_code in subscriptions:
                 filter_type = subscriptions[reg_code]
 
@@ -206,8 +210,13 @@ class WebSocketService:
                 if should_send:
                     try:
                         await client.send(msg_str)
+                        client_ip = client.remote_address[0] if client.remote_address else 'unknown'
+                        logger.info(f"Sent event to {client_ip} (camera: {reg_code}, filter: {filter_type})")
                     except Exception:
                         dead_clients.add(client)
+                else:
+                    client_ip = client.remote_address[0] if client.remote_address else 'unknown'
+                    logger.info(f"Filtered event for {client_ip} (camera: {reg_code}, filter: {filter_type}, access: {access_granted})")
 
         # Clean up dead clients
         for client in dead_clients:
@@ -321,7 +330,7 @@ class WebSocketService:
         }
         # Include event_data for filter checking
         self._camera_queue.append((reg_code, message, event_data))
-        logger.debug(f"Queued camera event for {reg_code}: {event_data.get('plate')} (access: {event_data.get('access_granted')})")
+        logger.info(f"Queued camera event for {reg_code}: {event_data.get('plate')} (access_granted: {event_data.get('access_granted')})")
 
     def broadcast_barrier_status(self, relay_states):
         """Broadcast barrier status update"""
