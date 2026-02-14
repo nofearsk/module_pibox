@@ -43,9 +43,10 @@ class WebSocketService:
         self._running = False
         self._message_queue = []
         self._stats_interval = 30  # seconds
-        # Camera subscriptions: {websocket: set(reg_codes)}
+        # Camera subscriptions: {websocket: {reg_code: filter}}
+        # filter: 'all' | 'unregistered' | 'registered' | 'none'
         self._camera_subscriptions = {}
-        # Camera-specific message queue: [(reg_code, message), ...]
+        # Camera-specific message queue: [(reg_code, message, event_data), ...]
         self._camera_queue = []
 
     async def _handler(self, websocket, path=None):
@@ -92,46 +93,50 @@ class WebSocketService:
         # Camera subscription actions
         elif action == 'subscribe':
             camera = data.get('camera')  # reg_code
+            filter_type = data.get('filter', 'all')  # all, unregistered, registered, none
             if camera:
                 if websocket not in self._camera_subscriptions:
-                    self._camera_subscriptions[websocket] = set()
-                self._camera_subscriptions[websocket].add(camera)
+                    self._camera_subscriptions[websocket] = {}
+                self._camera_subscriptions[websocket][camera] = filter_type
                 await websocket.send(json.dumps({
                     'type': 'subscribed',
                     'camera': camera,
-                    'subscriptions': list(self._camera_subscriptions[websocket])
+                    'filter': filter_type,
+                    'subscriptions': list(self._camera_subscriptions[websocket].keys())
                 }))
-                logger.debug(f"Client subscribed to camera: {camera}")
+                logger.debug(f"Client subscribed to camera: {camera} with filter: {filter_type}")
 
         elif action == 'unsubscribe':
             camera = data.get('camera')
             if camera and websocket in self._camera_subscriptions:
-                self._camera_subscriptions[websocket].discard(camera)
+                self._camera_subscriptions[websocket].pop(camera, None)
                 await websocket.send(json.dumps({
                     'type': 'unsubscribed',
                     'camera': camera,
-                    'subscriptions': list(self._camera_subscriptions[websocket])
+                    'subscriptions': list(self._camera_subscriptions[websocket].keys())
                 }))
                 logger.debug(f"Client unsubscribed from camera: {camera}")
 
         elif action == 'subscribe_all':
-            # Subscribe to all cameras
+            # Subscribe to all cameras with default filter
             from database.models import AnprCameraModel
             cameras = AnprCameraModel.get_all()
+            filter_type = data.get('filter', 'all')
             if websocket not in self._camera_subscriptions:
-                self._camera_subscriptions[websocket] = set()
+                self._camera_subscriptions[websocket] = {}
             for cam in cameras:
-                self._camera_subscriptions[websocket].add(cam['reg_code'])
+                self._camera_subscriptions[websocket][cam['reg_code']] = filter_type
             await websocket.send(json.dumps({
                 'type': 'subscribed_all',
-                'subscriptions': list(self._camera_subscriptions[websocket])
+                'filter': filter_type,
+                'subscriptions': list(self._camera_subscriptions[websocket].keys())
             }))
 
         elif action == 'get_subscriptions':
-            subs = list(self._camera_subscriptions.get(websocket, set()))
+            subs = self._camera_subscriptions.get(websocket, {})
             await websocket.send(json.dumps({
                 'type': 'subscriptions',
-                'subscriptions': subs
+                'subscriptions': subs  # {camera: filter}
             }))
 
     async def _send_stats(self, websocket):
@@ -170,18 +175,39 @@ class WebSocketService:
 
         self.clients -= dead_clients
 
-    async def _broadcast_to_camera(self, reg_code, message):
-        """Broadcast message to clients subscribed to a specific camera"""
-        if isinstance(message, dict):
-            message = json.dumps(message)
+    async def _broadcast_to_camera(self, reg_code, message, event_data=None):
+        """Broadcast message to clients subscribed to a specific camera with filtering"""
+        msg_str = json.dumps(message) if isinstance(message, dict) else message
+
+        # Get access_granted from event data for filtering
+        access_granted = None
+        if event_data:
+            access_granted = event_data.get('access_granted')
 
         dead_clients = set()
         for client, subscriptions in list(self._camera_subscriptions.items()):
             if reg_code in subscriptions:
-                try:
-                    await client.send(message)
-                except Exception:
-                    dead_clients.add(client)
+                filter_type = subscriptions[reg_code]
+
+                # Apply filter logic
+                should_send = False
+                if filter_type == 'all':
+                    should_send = True
+                elif filter_type == 'none':
+                    should_send = False
+                elif filter_type == 'unregistered' and access_granted is not None:
+                    should_send = not access_granted  # Only send if NOT registered
+                elif filter_type == 'registered' and access_granted is not None:
+                    should_send = access_granted  # Only send if registered
+                else:
+                    # Default: send if no filter or unknown filter
+                    should_send = True
+
+                if should_send:
+                    try:
+                        await client.send(msg_str)
+                    except Exception:
+                        dead_clients.add(client)
 
         # Clean up dead clients
         for client in dead_clients:
@@ -224,8 +250,13 @@ class WebSocketService:
 
                 # Broadcast to camera subscribers
                 while self._camera_queue:
-                    reg_code, message = self._camera_queue.pop(0)
-                    await self._broadcast_to_camera(reg_code, message)
+                    item = self._camera_queue.pop(0)
+                    if len(item) == 3:
+                        reg_code, message, event_data = item
+                    else:
+                        reg_code, message = item
+                        event_data = None
+                    await self._broadcast_to_camera(reg_code, message, event_data)
 
                 await asyncio.sleep(0.1)
 
@@ -277,18 +308,20 @@ class WebSocketService:
     def broadcast_camera_event(self, reg_code, event_data):
         """
         Broadcast event to clients subscribed to a specific camera
+        Respects subscription filters (all, unregistered, registered, none)
 
         Args:
             reg_code: Camera registration code
-            event_data: dict with plate detection details
+            event_data: dict with plate detection details (must include 'access_granted' for filtering)
         """
         message = {
             'type': 'camera_event',
             'camera': reg_code,
             'data': event_data
         }
-        self._camera_queue.append((reg_code, message))
-        logger.debug(f"Queued camera event for {reg_code}: {event_data.get('plate')}")
+        # Include event_data for filter checking
+        self._camera_queue.append((reg_code, message, event_data))
+        logger.debug(f"Queued camera event for {reg_code}: {event_data.get('plate')} (access: {event_data.get('access_granted')})")
 
     def broadcast_barrier_status(self, relay_states):
         """Broadcast barrier status update"""
