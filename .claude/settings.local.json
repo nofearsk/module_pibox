@@ -40,7 +40,9 @@
       "Bash(/odoo/custom/addons/module_pibox/services/web_relay_service.py )",
       "Bash(/odoo/custom/addons/module_pibox/services/relay_service.py )",
       "Bash(/odoo/custom/addons/module_pibox/config.py admin@192.168.1.238:/home/admin/pibox/)",
-      "Bash(/odoo/custom/addons/module_pibox/templates/vehicles.html )"
+      "Bash(/odoo/custom/addons/module_pibox/templates/vehicles.html )",
+      "Bash(gh auth status:*)",
+      "Bash(git remote set-url:*)"
     ]
   }
 }

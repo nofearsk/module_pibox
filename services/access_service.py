@@ -194,20 +194,21 @@ class AccessService:
         )
         result['log_id'] = log_id
 
-        # Broadcast via WebSocket
-        websocket_service.broadcast_access_event({
-            'id': log_id,
-            'plate': normalized_plate,
-            'timestamp': datetime.now().isoformat(),
-            'access_granted': result['access_granted'],
-            'vehicle_type': result['vehicle_type'],
-            'unit_name': result['vehicle_info']['unit_name'] if result['vehicle_info'] else None,
-            'owner_name': result['vehicle_info']['owner_name'] if result['vehicle_info'] else None,
-            'image_url': f"/images/{plate_image_path}" if plate_image_path else None,
-            'camera_name': display_name,
-            'location_id': location_id,
-            'barriers_triggered': result['barriers_triggered']
-        })
+        # Broadcast via WebSocket (respects subscription filters)
+        if reg_code:
+            websocket_service.broadcast_camera_event(reg_code, {
+                'id': log_id,
+                'plate': normalized_plate,
+                'timestamp': datetime.now().isoformat(),
+                'access_granted': result['access_granted'],
+                'vehicle_type': result['vehicle_type'],
+                'unit_name': result['vehicle_info']['unit_name'] if result['vehicle_info'] else None,
+                'owner_name': result['vehicle_info']['owner_name'] if result['vehicle_info'] else None,
+                'image_url': f"/images/{plate_image_path}" if plate_image_path else None,
+                'camera_name': display_name,
+                'location_id': location_id,
+                'barriers_triggered': result['barriers_triggered']
+            })
 
         # Push to Odoo asynchronously (ALL events - granted or denied)
         # Use S3 URLs if configured, otherwise local URLs
