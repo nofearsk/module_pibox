@@ -475,24 +475,50 @@ def stats():
     """Statistics dashboard page"""
     try:
         today = date.today()
+        yesterday = today - timedelta(days=1)
         week_ago = today - timedelta(days=7)
 
+        # Basic stats
         today_stats = AccessLogModel.get_today_stats()
+        yesterday_stats = AccessLogModel.get_stats_by_date_range(yesterday.isoformat(), yesterday.isoformat())
         week_stats = AccessLogModel.get_stats_by_date_range(week_ago.isoformat(), today.isoformat())
+
+        # Detailed analytics
         hourly_stats = AccessLogModel.get_hourly_stats()
+        daily_stats = AccessLogModel.get_daily_stats(days=7)
+        camera_stats = AccessLogModel.get_camera_stats(days=7)
+        top_vehicles = AccessLogModel.get_top_vehicles(limit=10, days=7)
+        peak_hours = AccessLogModel.get_peak_hours(days=7)
+        recent_denied = AccessLogModel.get_recent_denied(limit=5)
 
         # Get counts
         vehicle_count = VehicleModel.count()
         blacklist_count = BlacklistModel.count()
         camera_count = AnprCameraModel.count()
 
+        # Calculate percentages
+        today_rate = round((today_stats['granted'] / today_stats['total'] * 100) if today_stats['total'] > 0 else 0, 1)
+        week_rate = round((week_stats['granted'] / week_stats['total'] * 100) if week_stats['total'] > 0 else 0, 1)
+
+        # Today vs yesterday comparison
+        today_vs_yesterday = today_stats['total'] - yesterday_stats['total']
+
         return render_template('stats.html',
             today=today_stats,
+            yesterday=yesterday_stats,
             week=week_stats,
             hourly=hourly_stats,
+            daily=daily_stats,
+            camera_stats=camera_stats,
+            top_vehicles=top_vehicles,
+            peak_hours=peak_hours,
+            recent_denied=recent_denied,
             vehicle_count=vehicle_count,
             blacklist_count=blacklist_count,
-            camera_count=camera_count
+            camera_count=camera_count,
+            today_rate=today_rate,
+            week_rate=week_rate,
+            today_vs_yesterday=today_vs_yesterday
         )
     except Exception as e:
         logger.error(f"Stats page error: {e}")

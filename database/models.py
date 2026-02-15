@@ -329,6 +329,87 @@ class AccessLogModel:
         return [dict(r) for r in result]
 
     @staticmethod
+    def get_daily_stats(days=7):
+        """Get daily breakdown for last N days"""
+        db = get_db()
+        result = db.execute('''
+            SELECT
+                date(timestamp) as day,
+                COUNT(*) as total,
+                SUM(CASE WHEN access_granted = 1 THEN 1 ELSE 0 END) as granted,
+                SUM(CASE WHEN access_granted = 0 THEN 1 ELSE 0 END) as denied
+            FROM access_logs
+            WHERE date(timestamp) >= date('now', ?)
+            GROUP BY date(timestamp)
+            ORDER BY day
+        ''', (f'-{days} days',)).fetchall()
+        return [dict(r) for r in result]
+
+    @staticmethod
+    def get_camera_stats(days=7):
+        """Get stats by camera for last N days"""
+        db = get_db()
+        result = db.execute('''
+            SELECT
+                COALESCE(camera_name, 'Unknown') as camera,
+                COUNT(*) as total,
+                SUM(CASE WHEN access_granted = 1 THEN 1 ELSE 0 END) as granted,
+                SUM(CASE WHEN access_granted = 0 THEN 1 ELSE 0 END) as denied
+            FROM access_logs
+            WHERE date(timestamp) >= date('now', ?)
+            GROUP BY camera_name
+            ORDER BY total DESC
+        ''', (f'-{days} days',)).fetchall()
+        return [dict(r) for r in result]
+
+    @staticmethod
+    def get_top_vehicles(limit=10, days=7):
+        """Get most frequent vehicles"""
+        db = get_db()
+        result = db.execute('''
+            SELECT
+                plate,
+                COUNT(*) as count,
+                MAX(vehicle_type) as vehicle_type,
+                MAX(unit_name) as unit_name,
+                MAX(owner_name) as owner_name
+            FROM access_logs
+            WHERE date(timestamp) >= date('now', ?)
+            GROUP BY UPPER(plate)
+            ORDER BY count DESC
+            LIMIT ?
+        ''', (f'-{days} days', limit)).fetchall()
+        return [dict(r) for r in result]
+
+    @staticmethod
+    def get_peak_hours(days=7):
+        """Get busiest hours"""
+        db = get_db()
+        result = db.execute('''
+            SELECT
+                strftime('%H', timestamp) as hour,
+                COUNT(*) as total
+            FROM access_logs
+            WHERE date(timestamp) >= date('now', ?)
+            GROUP BY strftime('%H', timestamp)
+            ORDER BY total DESC
+            LIMIT 5
+        ''', (f'-{days} days',)).fetchall()
+        return [dict(r) for r in result]
+
+    @staticmethod
+    def get_recent_denied(limit=10):
+        """Get recent denied entries"""
+        db = get_db()
+        result = db.execute('''
+            SELECT * FROM access_logs
+            WHERE access_granted = 0
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,)).fetchall()
+        return [dict(r) for r in result]
+
+    @staticmethod
     def get_unsynced(limit=100):
         """Get logs not yet synced to Odoo"""
         db = get_db()

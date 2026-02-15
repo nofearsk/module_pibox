@@ -1,16 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}Statistics - PiBox{% endblock %}
+{% block title %}Analytics Dashboard - PiBox{% endblock %}
 
 {% block content %}
 <div class="stats-page">
     <div class="page-header">
-        <h1>Statistics Dashboard</h1>
+        <h1>Analytics Dashboard</h1>
         <button onclick="location.reload()" class="btn btn-sm">Refresh</button>
     </div>
 
-    <!-- Quick Stats -->
+    <!-- Key Metrics -->
     <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{ today.total }}</div>
+            <div class="stat-label">Today's Events</div>
+            <div class="stat-change {% if today_vs_yesterday >= 0 %}positive{% else %}negative{% endif %}">
+                {% if today_vs_yesterday >= 0 %}+{% endif %}{{ today_vs_yesterday }} vs yesterday
+            </div>
+        </div>
+        <div class="stat-card stat-success">
+            <div class="stat-value">{{ today_rate }}%</div>
+            <div class="stat-label">Access Rate Today</div>
+            <div class="stat-subtext">{{ today.granted }} granted / {{ today.denied }} denied</div>
+        </div>
         <div class="stat-card">
             <div class="stat-value">{{ vehicle_count }}</div>
             <div class="stat-label">Registered Vehicles</div>
@@ -19,172 +31,295 @@
             <div class="stat-value">{{ blacklist_count }}</div>
             <div class="stat-label">Blacklisted</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ camera_count }}</div>
-            <div class="stat-label">ANPR Cameras</div>
-        </div>
     </div>
 
-    <div class="card-grid">
-        <!-- Today's Stats -->
-        <div class="card">
+    <!-- Main Analytics Grid -->
+    <div class="analytics-grid">
+        <!-- Daily Trend Chart -->
+        <div class="card chart-card">
             <div class="card-header">
-                <h2>Today</h2>
+                <h2>7-Day Trend</h2>
             </div>
             <div class="card-body">
-                <div class="stats-breakdown">
-                    <div class="stat-row">
-                        <span class="stat-label">Total Events</span>
-                        <span class="stat-num">{{ today.total }}</span>
+                {% if daily %}
+                <div class="bar-chart">
+                    {% set max_val = daily|map(attribute='total')|max or 1 %}
+                    {% for d in daily %}
+                    <div class="bar-group" title="{{ d.day }}: {{ d.total }} total ({{ d.granted }} granted, {{ d.denied }} denied)">
+                        <div class="bar-container">
+                            <div class="bar granted" style="height: {{ (d.granted / max_val * 100)|round }}%"></div>
+                            <div class="bar denied" style="height: {{ (d.denied / max_val * 100)|round }}%"></div>
+                        </div>
+                        <span class="bar-label">{{ d.day[5:] }}</span>
+                        <span class="bar-value">{{ d.total }}</span>
                     </div>
-                    <div class="stat-row success">
-                        <span class="stat-label">Access Granted</span>
-                        <span class="stat-num">{{ today.granted }}</span>
-                    </div>
-                    <div class="stat-row danger">
-                        <span class="stat-label">Access Denied</span>
-                        <span class="stat-num">{{ today.denied }}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Residents</span>
-                        <span class="stat-num">{{ today.residents }}</span>
-                    </div>
-                    <div class="stat-row warning">
-                        <span class="stat-label">Unknown Vehicles</span>
-                        <span class="stat-num">{{ today.unknown }}</span>
-                    </div>
-                    {% if today.blacklisted %}
-                    <div class="stat-row danger">
-                        <span class="stat-label">Blacklisted</span>
-                        <span class="stat-num">{{ today.blacklisted }}</span>
-                    </div>
-                    {% endif %}
+                    {% endfor %}
                 </div>
-                {% if today.total > 0 %}
-                <div class="stat-bar">
-                    <div class="bar-segment success" style="width: {{ (today.granted / today.total * 100)|round }}%"
-                         title="Granted: {{ today.granted }}"></div>
-                    <div class="bar-segment danger" style="width: {{ (today.denied / today.total * 100)|round }}%"
-                         title="Denied: {{ today.denied }}"></div>
+                <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-color granted"></span> Granted</span>
+                    <span class="legend-item"><span class="legend-color denied"></span> Denied</span>
                 </div>
+                {% else %}
+                <div class="empty-state">No data for last 7 days</div>
                 {% endif %}
             </div>
         </div>
 
-        <!-- Week Stats -->
-        <div class="card">
-            <div class="card-header">
-                <h2>Last 7 Days</h2>
-            </div>
-            <div class="card-body">
-                <div class="stats-breakdown">
-                    <div class="stat-row">
-                        <span class="stat-label">Total Events</span>
-                        <span class="stat-num">{{ week.total }}</span>
-                    </div>
-                    <div class="stat-row success">
-                        <span class="stat-label">Access Granted</span>
-                        <span class="stat-num">{{ week.granted }}</span>
-                    </div>
-                    <div class="stat-row danger">
-                        <span class="stat-label">Access Denied</span>
-                        <span class="stat-num">{{ week.denied }}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Residents</span>
-                        <span class="stat-num">{{ week.residents }}</span>
-                    </div>
-                    <div class="stat-row warning">
-                        <span class="stat-label">Unknown Vehicles</span>
-                        <span class="stat-num">{{ week.unknown }}</span>
-                    </div>
-                </div>
-                {% if week.total > 0 %}
-                <div class="stat-bar">
-                    <div class="bar-segment success" style="width: {{ (week.granted / week.total * 100)|round }}%"
-                         title="Granted: {{ week.granted }}"></div>
-                    <div class="bar-segment danger" style="width: {{ (week.denied / week.total * 100)|round }}%"
-                         title="Denied: {{ week.denied }}"></div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Hourly Breakdown -->
-        <div class="card wide-card">
+        <!-- Hourly Distribution -->
+        <div class="card chart-card">
             <div class="card-header">
                 <h2>Today's Hourly Activity</h2>
             </div>
             <div class="card-body">
                 {% if hourly %}
                 <div class="hourly-chart">
+                    {% set max_hourly = hourly|map(attribute='total')|max or 1 %}
                     {% for h in hourly %}
-                    <div class="hour-bar" title="{{ h.hour }}:00 - Total: {{ h.total }}, Granted: {{ h.granted }}, Denied: {{ h.denied }}">
-                        <div class="hour-fill" style="height: {{ [h.total * 5, 100]|min }}%">
-                            <span class="hour-count">{{ h.total }}</span>
+                    <div class="hour-bar" title="{{ h.hour }}:00 - {{ h.total }} events">
+                        <div class="hour-fill" style="height: {{ (h.total / max_hourly * 100)|round }}%">
+                            {% if h.total > 0 %}<span>{{ h.total }}</span>{% endif %}
                         </div>
                         <span class="hour-label">{{ h.hour }}</span>
                     </div>
                     {% endfor %}
                 </div>
                 {% else %}
-                <div class="empty-state">
-                    <p>No hourly data available</p>
-                </div>
+                <div class="empty-state">No activity today</div>
                 {% endif %}
+            </div>
+        </div>
+
+        <!-- Camera Breakdown -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Activity by Camera (7 days)</h2>
+            </div>
+            <div class="card-body">
+                {% if camera_stats %}
+                <div class="camera-list">
+                    {% set max_cam = camera_stats[0].total if camera_stats else 1 %}
+                    {% for cam in camera_stats %}
+                    <div class="camera-row">
+                        <div class="camera-info">
+                            <span class="camera-name">{{ cam.camera }}</span>
+                            <span class="camera-count">{{ cam.total }} events</span>
+                        </div>
+                        <div class="camera-bar-container">
+                            <div class="camera-bar granted" style="width: {{ (cam.granted / max_cam * 100)|round }}%"></div>
+                            <div class="camera-bar denied" style="width: {{ (cam.denied / max_cam * 100)|round }}%"></div>
+                        </div>
+                        <div class="camera-stats">
+                            <span class="granted-text">{{ cam.granted }}</span> /
+                            <span class="denied-text">{{ cam.denied }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No camera data</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Peak Hours -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Peak Hours (7 days)</h2>
+            </div>
+            <div class="card-body">
+                {% if peak_hours %}
+                <div class="peak-hours">
+                    {% for p in peak_hours %}
+                    <div class="peak-item">
+                        <span class="peak-rank">#{{ loop.index }}</span>
+                        <span class="peak-hour">{{ p.hour }}:00</span>
+                        <span class="peak-count">{{ p.total }} events</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No data</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Top Vehicles -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Most Active Vehicles (7 days)</h2>
+            </div>
+            <div class="card-body">
+                {% if top_vehicles %}
+                <table class="data-table compact">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Plate</th>
+                            <th>Type</th>
+                            <th>Unit</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in top_vehicles %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td class="plate-cell">{{ v.plate }}</td>
+                            <td>
+                                <span class="type-badge {{ v.vehicle_type }}">{{ v.vehicle_type }}</span>
+                            </td>
+                            <td>{{ v.unit_name or '-' }}</td>
+                            <td><strong>{{ v.count }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">No vehicle data</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recent Denied -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Recent Denied Access</h2>
+            </div>
+            <div class="card-body">
+                {% if recent_denied %}
+                <div class="denied-list">
+                    {% for d in recent_denied %}
+                    <div class="denied-item">
+                        <span class="denied-plate">{{ d.plate }}</span>
+                        <span class="denied-camera">{{ d.camera_name or 'Unknown' }}</span>
+                        <span class="denied-time">{{ d.timestamp[11:16] }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No recent denials</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Week Summary -->
+        <div class="card summary-card">
+            <div class="card-header">
+                <h2>7-Day Summary</h2>
+            </div>
+            <div class="card-body">
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-value">{{ week.total }}</span>
+                        <span class="summary-label">Total Events</span>
+                    </div>
+                    <div class="summary-item success">
+                        <span class="summary-value">{{ week.granted }}</span>
+                        <span class="summary-label">Granted</span>
+                    </div>
+                    <div class="summary-item danger">
+                        <span class="summary-value">{{ week.denied }}</span>
+                        <span class="summary-label">Denied</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-value">{{ week_rate }}%</span>
+                        <span class="summary-label">Access Rate</span>
+                    </div>
+                </div>
+                <div class="summary-bar">
+                    {% if week.total > 0 %}
+                    <div class="summary-fill granted" style="width: {{ (week.granted / week.total * 100)|round }}%"></div>
+                    <div class="summary-fill denied" style="width: {{ (week.denied / week.total * 100)|round }}%"></div>
+                    {% endif %}
+                </div>
+                <div class="type-breakdown">
+                    <span>Residents: <strong>{{ week.residents }}</strong></span>
+                    <span>Unknown: <strong>{{ week.unknown }}</strong></span>
+                    <span>Blacklisted: <strong>{{ week.blacklisted }}</strong></span>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-.stats-page .card-grid {
+.stats-page .analytics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 1rem;
     margin-top: 1rem;
 }
-.wide-card {
+.chart-card {
+    grid-column: span 1;
+}
+.summary-card {
     grid-column: 1 / -1;
 }
-.stats-breakdown {
+
+/* Stat cards */
+.stat-change {
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
+}
+.stat-change.positive { color: #28a745; }
+.stat-change.negative { color: #dc3545; }
+.stat-subtext {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.3rem;
+}
+
+/* Bar chart */
+.bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 150px;
+    padding: 10px 0;
+}
+.bar-group {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    align-items: center;
+    height: 100%;
 }
-.stat-row {
+.bar-container {
+    flex: 1;
+    width: 100%;
     display: flex;
-    justify-content: space-between;
-    padding: 0.5rem;
-    border-radius: 4px;
-    background: #f8f9fa;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 2px;
 }
-.stat-row.success { background: #d4edda; }
-.stat-row.danger { background: #f8d7da; }
-.stat-row.warning { background: #fff3cd; }
-.stat-num {
-    font-weight: bold;
-    font-size: 1.1rem;
+.bar {
+    width: 100%;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
 }
-.stat-bar {
+.bar.granted { background: #28a745; }
+.bar.denied { background: #dc3545; }
+.bar-label { font-size: 0.7rem; color: #666; margin-top: 4px; }
+.bar-value { font-size: 0.75rem; font-weight: bold; }
+
+.chart-legend {
     display: flex;
-    height: 20px;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-top: 1rem;
-    background: #eee;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
 }
-.bar-segment {
-    transition: width 0.3s;
-}
-.bar-segment.success { background: #28a745; }
-.bar-segment.danger { background: #dc3545; }
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-color { width: 12px; height: 12px; border-radius: 2px; }
+.legend-color.granted { background: #28a745; }
+.legend-color.denied { background: #dc3545; }
+
+/* Hourly chart */
 .hourly-chart {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
-    height: 150px;
-    padding: 1rem 0;
+    gap: 3px;
+    height: 120px;
 }
 .hour-bar {
     flex: 1;
@@ -196,26 +331,69 @@
 .hour-fill {
     width: 100%;
     background: linear-gradient(to top, #007bff, #17a2b8);
-    border-radius: 4px 4px 0 0;
+    border-radius: 3px 3px 0 0;
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    min-height: 4px;
+    min-height: 2px;
 }
-.hour-count {
-    color: white;
-    font-size: 0.7rem;
-    padding-top: 2px;
-}
-.hour-label {
-    font-size: 0.7rem;
-    color: #666;
-    margin-top: 4px;
-}
-.empty-state {
-    text-align: center;
-    padding: 2rem;
-    color: #666;
+.hour-fill span { color: white; font-size: 0.65rem; padding-top: 2px; }
+.hour-label { font-size: 0.65rem; color: #666; margin-top: 2px; }
+
+/* Camera breakdown */
+.camera-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.camera-row { display: flex; align-items: center; gap: 0.5rem; }
+.camera-info { width: 120px; }
+.camera-name { display: block; font-weight: 500; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.camera-count { font-size: 0.75rem; color: #666; }
+.camera-bar-container { flex: 1; height: 16px; background: #eee; border-radius: 8px; display: flex; overflow: hidden; }
+.camera-bar { height: 100%; }
+.camera-bar.granted { background: #28a745; }
+.camera-bar.denied { background: #dc3545; }
+.camera-stats { width: 60px; text-align: right; font-size: 0.8rem; }
+.granted-text { color: #28a745; }
+.denied-text { color: #dc3545; }
+
+/* Peak hours */
+.peak-hours { display: flex; flex-direction: column; gap: 0.5rem; }
+.peak-item { display: flex; align-items: center; gap: 1rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px; }
+.peak-rank { font-weight: bold; color: #007bff; width: 30px; }
+.peak-hour { font-size: 1.1rem; font-weight: 500; }
+.peak-count { margin-left: auto; color: #666; }
+
+/* Top vehicles table */
+.data-table.compact { font-size: 0.85rem; }
+.data-table.compact td, .data-table.compact th { padding: 0.4rem; }
+.plate-cell { font-family: monospace; font-weight: bold; }
+.type-badge { padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; }
+.type-badge.resident { background: #d4edda; color: #155724; }
+.type-badge.unknown { background: #fff3cd; color: #856404; }
+.type-badge.blacklisted { background: #f8d7da; color: #721c24; }
+
+/* Denied list */
+.denied-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.denied-item { display: flex; align-items: center; gap: 1rem; padding: 0.5rem; background: #f8d7da; border-radius: 4px; border-left: 3px solid #dc3545; }
+.denied-plate { font-family: monospace; font-weight: bold; }
+.denied-camera { flex: 1; color: #666; font-size: 0.85rem; }
+.denied-time { font-size: 0.85rem; color: #666; }
+
+/* Summary card */
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; text-align: center; margin-bottom: 1rem; }
+.summary-item { padding: 1rem; background: #f8f9fa; border-radius: 8px; }
+.summary-item.success { background: #d4edda; }
+.summary-item.danger { background: #f8d7da; }
+.summary-value { display: block; font-size: 1.5rem; font-weight: bold; }
+.summary-label { font-size: 0.85rem; color: #666; }
+.summary-bar { height: 20px; background: #eee; border-radius: 10px; display: flex; overflow: hidden; margin-bottom: 1rem; }
+.summary-fill.granted { background: #28a745; }
+.summary-fill.denied { background: #dc3545; }
+.type-breakdown { display: flex; justify-content: center; gap: 2rem; font-size: 0.9rem; color: #666; }
+
+.empty-state { text-align: center; padding: 2rem; color: #666; }
+
+@media (max-width: 768px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .analytics-grid { grid-template-columns: 1fr; }
 }
 </style>
 {% endblock %}

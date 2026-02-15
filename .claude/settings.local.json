@@ -42,7 +42,12 @@
       "Bash(/odoo/custom/addons/module_pibox/config.py admin@192.168.1.238:/home/admin/pibox/)",
       "Bash(/odoo/custom/addons/module_pibox/templates/vehicles.html )",
       "Bash(gh auth status:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(/odoo/custom/addons/module_pibox/app.py )",
+      "Bash(/odoo/custom/addons/module_pibox/pibox.service )",
+      "Bash(admin@192.168.1.238:/home/admin/pibox/)",
+      "Bash(/odoo/custom/addons/module_pibox/services/system_health.py )",
+      "Bash(/odoo/custom/addons/module_pibox/templates/*.html)"
     ]
   }
 }
