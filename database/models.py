@@ -2,7 +2,7 @@
 Data Access Layer Models
 """
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from .db import get_db
 
 
@@ -236,7 +236,7 @@ class AccessLogModel:
         return db.execute(query, params).fetchall()
 
     @staticmethod
-    def count(vehicle_type=None, search=None):
+    def count(vehicle_type=None, search=None, date_from=None, date_to=None, access_granted=None):
         """Count access logs"""
         db = get_db()
         query = 'SELECT COUNT(*) as cnt FROM access_logs WHERE 1=1'
@@ -247,11 +247,20 @@ class AccessLogModel:
         if search:
             query += ' AND (UPPER(plate) LIKE UPPER(?) OR UPPER(camera_name) LIKE UPPER(?))'
             params.extend([f'%{search}%', f'%{search}%'])
+        if date_from:
+            query += ' AND date(timestamp) >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(timestamp) <= ?'
+            params.append(date_to)
+        if access_granted is not None:
+            query += ' AND access_granted = ?'
+            params.append(1 if access_granted else 0)
         result = db.execute(query, params).fetchone()
         return result['cnt'] if result else 0
 
     @staticmethod
-    def get_paginated(page=1, per_page=50, vehicle_type=None, search=None):
+    def get_paginated(page=1, per_page=50, vehicle_type=None, search=None, date_from=None, date_to=None, access_granted=None):
         """Get access logs with pagination"""
         db = get_db()
         offset = (page - 1) * per_page
@@ -263,9 +272,61 @@ class AccessLogModel:
         if search:
             query += ' AND (UPPER(plate) LIKE UPPER(?) OR UPPER(camera_name) LIKE UPPER(?))'
             params.extend([f'%{search}%', f'%{search}%'])
+        if date_from:
+            query += ' AND date(timestamp) >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(timestamp) <= ?'
+            params.append(date_to)
+        if access_granted is not None:
+            query += ' AND access_granted = ?'
+            params.append(1 if access_granted else 0)
         query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
         return db.execute(query, params).fetchall()
+
+    @staticmethod
+    def get_stats_by_date_range(date_from, date_to):
+        """Get statistics for a date range"""
+        db = get_db()
+        result = db.execute('''
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN access_granted = 1 THEN 1 ELSE 0 END) as granted,
+                SUM(CASE WHEN access_granted = 0 THEN 1 ELSE 0 END) as denied,
+                SUM(CASE WHEN vehicle_type = 'resident' THEN 1 ELSE 0 END) as residents,
+                SUM(CASE WHEN vehicle_type = 'unknown' THEN 1 ELSE 0 END) as unknown,
+                SUM(CASE WHEN vehicle_type = 'blacklisted' THEN 1 ELSE 0 END) as blacklisted
+            FROM access_logs
+            WHERE date(timestamp) >= ? AND date(timestamp) <= ?
+        ''', (date_from, date_to)).fetchone()
+        return {
+            'total': result['total'] or 0,
+            'granted': result['granted'] or 0,
+            'denied': result['denied'] or 0,
+            'residents': result['residents'] or 0,
+            'unknown': result['unknown'] or 0,
+            'blacklisted': result['blacklisted'] or 0,
+        }
+
+    @staticmethod
+    def get_hourly_stats(target_date=None):
+        """Get hourly breakdown for a specific date"""
+        db = get_db()
+        if target_date is None:
+            target_date = date.today().isoformat()
+        result = db.execute('''
+            SELECT
+                strftime('%H', timestamp) as hour,
+                COUNT(*) as total,
+                SUM(CASE WHEN access_granted = 1 THEN 1 ELSE 0 END) as granted,
+                SUM(CASE WHEN access_granted = 0 THEN 1 ELSE 0 END) as denied
+            FROM access_logs
+            WHERE date(timestamp) = ?
+            GROUP BY strftime('%H', timestamp)
+            ORDER BY hour
+        ''', (target_date,)).fetchall()
+        return [dict(r) for r in result]
 
     @staticmethod
     def get_unsynced(limit=100):
@@ -620,3 +681,165 @@ class AnprCameraModel:
             (relay_channels, reg_code)
         )
         db.commit()
+
+
+class AuditLogModel:
+    """Data access for audit_logs table"""
+
+    @staticmethod
+    def log(action, user=None, ip_address=None, details=None, resource_type=None, resource_id=None):
+        """Create audit log entry"""
+        db = get_db()
+        db.execute('''
+            INSERT INTO audit_logs (timestamp, action, user, ip_address, details, resource_type, resource_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (datetime.now().isoformat(), action, user, ip_address, details, resource_type, resource_id))
+        db.commit()
+
+    @staticmethod
+    def get_recent(limit=100):
+        """Get recent audit logs"""
+        db = get_db()
+        return db.execute(
+            'SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?',
+            (limit,)
+        ).fetchall()
+
+    @staticmethod
+    def get_paginated(page=1, per_page=50, action=None, search=None, date_from=None, date_to=None):
+        """Get audit logs with pagination and filters"""
+        db = get_db()
+        offset = (page - 1) * per_page
+        query = 'SELECT * FROM audit_logs WHERE 1=1'
+        params = []
+
+        if action:
+            query += ' AND action = ?'
+            params.append(action)
+        if search:
+            query += ' AND (user LIKE ? OR details LIKE ? OR ip_address LIKE ?)'
+            params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+        if date_from:
+            query += ' AND date(timestamp) >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(timestamp) <= ?'
+            params.append(date_to)
+
+        query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        return db.execute(query, params).fetchall()
+
+    @staticmethod
+    def count(action=None, search=None, date_from=None, date_to=None):
+        """Count audit logs"""
+        db = get_db()
+        query = 'SELECT COUNT(*) as cnt FROM audit_logs WHERE 1=1'
+        params = []
+
+        if action:
+            query += ' AND action = ?'
+            params.append(action)
+        if search:
+            query += ' AND (user LIKE ? OR details LIKE ? OR ip_address LIKE ?)'
+            params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+        if date_from:
+            query += ' AND date(timestamp) >= ?'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(timestamp) <= ?'
+            params.append(date_to)
+
+        result = db.execute(query, params).fetchone()
+        return result['cnt'] if result else 0
+
+    @staticmethod
+    def get_actions():
+        """Get distinct actions"""
+        db = get_db()
+        return [r['action'] for r in db.execute(
+            'SELECT DISTINCT action FROM audit_logs ORDER BY action'
+        ).fetchall()]
+
+
+class BlacklistModel:
+    """Data access for blacklist table"""
+
+    @staticmethod
+    def get_all(active_only=True):
+        """Get all blacklisted plates"""
+        db = get_db()
+        query = 'SELECT * FROM blacklist'
+        if active_only:
+            query += ' WHERE active = 1'
+        query += ' ORDER BY added_at DESC'
+        return db.execute(query).fetchall()
+
+    @staticmethod
+    def get_by_plate(plate):
+        """Check if plate is blacklisted (case-insensitive)"""
+        db = get_db()
+        return db.execute(
+            'SELECT * FROM blacklist WHERE UPPER(plate) = UPPER(?) AND active = 1',
+            (plate,)
+        ).fetchone()
+
+    @staticmethod
+    def is_blacklisted(plate):
+        """Check if plate is currently blacklisted"""
+        entry = BlacklistModel.get_by_plate(plate)
+        if not entry:
+            return False
+        # Check expiry
+        if entry['expires_at']:
+            if datetime.now().isoformat() > entry['expires_at']:
+                return False
+        return True
+
+    @staticmethod
+    def add(plate, reason=None, added_by=None, expires_at=None):
+        """Add plate to blacklist"""
+        db = get_db()
+        plate = plate.upper().strip()
+        try:
+            db.execute('''
+                INSERT INTO blacklist (plate, reason, added_by, added_at, expires_at, active)
+                VALUES (?, ?, ?, ?, ?, 1)
+            ''', (plate, reason, added_by, datetime.now().isoformat(), expires_at))
+            db.commit()
+            return True
+        except Exception:
+            # Already exists, update it
+            db.execute('''
+                UPDATE blacklist SET reason = ?, added_by = ?, added_at = ?, expires_at = ?, active = 1
+                WHERE UPPER(plate) = UPPER(?)
+            ''', (reason, added_by, datetime.now().isoformat(), expires_at, plate))
+            db.commit()
+            return True
+
+    @staticmethod
+    def remove(plate):
+        """Remove plate from blacklist (soft delete)"""
+        db = get_db()
+        db.execute(
+            'UPDATE blacklist SET active = 0 WHERE UPPER(plate) = UPPER(?)',
+            (plate.upper(),)
+        )
+        db.commit()
+
+    @staticmethod
+    def delete(blacklist_id):
+        """Hard delete blacklist entry"""
+        db = get_db()
+        db.execute('DELETE FROM blacklist WHERE id = ?', (blacklist_id,))
+        db.commit()
+
+    @staticmethod
+    def count(active_only=True):
+        """Count blacklisted plates"""
+        db = get_db()
+        query = 'SELECT COUNT(*) as cnt FROM blacklist'
+        if active_only:
+            query += ' WHERE active = 1'
+        result = db.execute(query).fetchone()
+        return result['cnt'] if result else 0

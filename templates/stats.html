@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Statistics - PiBox{% endblock %}
+
+{% block content %}
+<div class="stats-page">
+    <div class="page-header">
+        <h1>Statistics Dashboard</h1>
+        <button onclick="location.reload()" class="btn btn-sm">Refresh</button>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{ vehicle_count }}</div>
+            <div class="stat-label">Registered Vehicles</div>
+        </div>
+        <div class="stat-card stat-danger">
+            <div class="stat-value">{{ blacklist_count }}</div>
+            <div class="stat-label">Blacklisted</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ camera_count }}</div>
+            <div class="stat-label">ANPR Cameras</div>
+        </div>
+    </div>
+
+    <div class="card-grid">
+        <!-- Today's Stats -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Today</h2>
+            </div>
+            <div class="card-body">
+                <div class="stats-breakdown">
+                    <div class="stat-row">
+                        <span class="stat-label">Total Events</span>
+                        <span class="stat-num">{{ today.total }}</span>
+                    </div>
+                    <div class="stat-row success">
+                        <span class="stat-label">Access Granted</span>
+                        <span class="stat-num">{{ today.granted }}</span>
+                    </div>
+                    <div class="stat-row danger">
+                        <span class="stat-label">Access Denied</span>
+                        <span class="stat-num">{{ today.denied }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Residents</span>
+                        <span class="stat-num">{{ today.residents }}</span>
+                    </div>
+                    <div class="stat-row warning">
+                        <span class="stat-label">Unknown Vehicles</span>
+                        <span class="stat-num">{{ today.unknown }}</span>
+                    </div>
+                    {% if today.blacklisted %}
+                    <div class="stat-row danger">
+                        <span class="stat-label">Blacklisted</span>
+                        <span class="stat-num">{{ today.blacklisted }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if today.total > 0 %}
+                <div class="stat-bar">
+                    <div class="bar-segment success" style="width: {{ (today.granted / today.total * 100)|round }}%"
+                         title="Granted: {{ today.granted }}"></div>
+                    <div class="bar-segment danger" style="width: {{ (today.denied / today.total * 100)|round }}%"
+                         title="Denied: {{ today.denied }}"></div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Week Stats -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Last 7 Days</h2>
+            </div>
+            <div class="card-body">
+                <div class="stats-breakdown">
+                    <div class="stat-row">
+                        <span class="stat-label">Total Events</span>
+                        <span class="stat-num">{{ week.total }}</span>
+                    </div>
+                    <div class="stat-row success">
+                        <span class="stat-label">Access Granted</span>
+                        <span class="stat-num">{{ week.granted }}</span>
+                    </div>
+                    <div class="stat-row danger">
+                        <span class="stat-label">Access Denied</span>
+                        <span class="stat-num">{{ week.denied }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Residents</span>
+                        <span class="stat-num">{{ week.residents }}</span>
+                    </div>
+                    <div class="stat-row warning">
+                        <span class="stat-label">Unknown Vehicles</span>
+                        <span class="stat-num">{{ week.unknown }}</span>
+                    </div>
+                </div>
+                {% if week.total > 0 %}
+                <div class="stat-bar">
+                    <div class="bar-segment success" style="width: {{ (week.granted / week.total * 100)|round }}%"
+                         title="Granted: {{ week.granted }}"></div>
+                    <div class="bar-segment danger" style="width: {{ (week.denied / week.total * 100)|round }}%"
+                         title="Denied: {{ week.denied }}"></div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Hourly Breakdown -->
+        <div class="card wide-card">
+            <div class="card-header">
+                <h2>Today's Hourly Activity</h2>
+            </div>
+            <div class="card-body">
+                {% if hourly %}
+                <div class="hourly-chart">
+                    {% for h in hourly %}
+                    <div class="hour-bar" title="{{ h.hour }}:00 - Total: {{ h.total }}, Granted: {{ h.granted }}, Denied: {{ h.denied }}">
+                        <div class="hour-fill" style="height: {{ [h.total * 5, 100]|min }}%">
+                            <span class="hour-count">{{ h.total }}</span>
+                        </div>
+                        <span class="hour-label">{{ h.hour }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <p>No hourly data available</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.stats-page .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.wide-card {
+    grid-column: 1 / -1;
+}
+.stats-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem;
+    border-radius: 4px;
+    background: #f8f9fa;
+}
+.stat-row.success { background: #d4edda; }
+.stat-row.danger { background: #f8d7da; }
+.stat-row.warning { background: #fff3cd; }
+.stat-num {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+.stat-bar {
+    display: flex;
+    height: 20px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 1rem;
+    background: #eee;
+}
+.bar-segment {
+    transition: width 0.3s;
+}
+.bar-segment.success { background: #28a745; }
+.bar-segment.danger { background: #dc3545; }
+.hourly-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 150px;
+    padding: 1rem 0;
+}
+.hour-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+.hour-fill {
+    width: 100%;
+    background: linear-gradient(to top, #007bff, #17a2b8);
+    border-radius: 4px 4px 0 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 4px;
+}
+.hour-count {
+    color: white;
+    font-size: 0.7rem;
+    padding-top: 2px;
+}
+.hour-label {
+    font-size: 0.7rem;
+    color: #666;
+    margin-top: 4px;
+}
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+</style>
+{% endblock %}

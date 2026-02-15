@@ -9,12 +9,25 @@ import hashlib
 import secrets
 
 from . import web_bp
-from database.models import VehicleModel, BarrierModel, AccessLogModel, AnprCameraModel, LocationModel
+from database.models import VehicleModel, BarrierModel, AccessLogModel, AnprCameraModel, LocationModel, AuditLogModel, BlacklistModel
 import json
+from datetime import date, timedelta
 from services.relay_service import relay_service
 from services.sync_service import sync_service
 from services.websocket_service import websocket_service
+from services import system_health
 from config import config
+
+
+def audit_log(action, details=None, resource_type=None, resource_id=None):
+    """Helper to create audit log entry"""
+    try:
+        user = 'admin' if session.get('admin_logged_in') else 'anonymous'
+        ip = request.remote_addr
+        AuditLogModel.log(action, user=user, ip_address=ip, details=details,
+                          resource_type=resource_type, resource_id=resource_id)
+    except Exception as e:
+        logger.error(f"Audit log error: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +122,13 @@ def admin_login():
         if hash_password(password) == stored_hash:
             session['admin_logged_in'] = True
             logger.info("Admin login successful")
+            audit_log('admin_login', details='Login successful')
             if config.is_configured:
                 return redirect(url_for('web.dashboard'))
             return redirect(url_for('web.login'))
         else:
             error = 'Invalid password'
+            audit_log('admin_login_failed', details='Invalid password')
 
     return render_template('admin_login.html', error=error)
 
@@ -121,6 +136,7 @@ def admin_login():
 @web_bp.route('/admin-logout')
 def admin_logout():
     """Admin logout"""
+    audit_log('admin_logout', details='User logged out')
     session.pop('admin_logged_in', None)
     return redirect(url_for('web.admin_login'))
 
@@ -208,25 +224,41 @@ def vehicles():
 @web_bp.route('/logs')
 @require_auth
 def logs():
-    """Access logs page with pagination"""
+    """Access logs page with pagination and filters"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         search = request.args.get('search', '').strip()
         vehicle_type = request.args.get('type', '').strip()
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        access_filter = request.args.get('access', '').strip()
+
+        # Parse access filter
+        access_granted = None
+        if access_filter == 'granted':
+            access_granted = True
+        elif access_filter == 'denied':
+            access_granted = False
 
         # Limit per_page to reasonable values
         per_page = min(max(per_page, 10), 100)
 
         total = AccessLogModel.count(
             vehicle_type=vehicle_type if vehicle_type else None,
-            search=search if search else None
+            search=search if search else None,
+            date_from=date_from if date_from else None,
+            date_to=date_to if date_to else None,
+            access_granted=access_granted
         )
         logs_list = AccessLogModel.get_paginated(
             page=page,
             per_page=per_page,
             vehicle_type=vehicle_type if vehicle_type else None,
-            search=search if search else None
+            search=search if search else None,
+            date_from=date_from if date_from else None,
+            date_to=date_to if date_to else None,
+            access_granted=access_granted
         )
 
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
@@ -241,7 +273,10 @@ def logs():
             per_page=per_page,
             total_pages=total_pages,
             search=search,
-            vehicle_type=vehicle_type
+            vehicle_type=vehicle_type,
+            date_from=date_from,
+            date_to=date_to,
+            access_filter=access_filter
         )
     except Exception as e:
         logger.error(f"Logs page error: {e}")
@@ -311,4 +346,154 @@ def camera_feed():
         return render_template('camera_feed.html')
     except Exception as e:
         logger.error(f"Camera feed page error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+# ==================== System Health ====================
+
+@web_bp.route('/health')
+@require_auth
+def health():
+    """System health page"""
+    try:
+        health_data = system_health.get_all_health()
+        return render_template('health.html', health=health_data)
+    except Exception as e:
+        logger.error(f"Health page error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+# ==================== Blacklist Management ====================
+
+@web_bp.route('/blacklist')
+@require_auth
+def blacklist():
+    """Blacklist management page"""
+    try:
+        entries = BlacklistModel.get_all(active_only=False)
+        count = BlacklistModel.count()
+        return render_template('blacklist.html', entries=entries, count=count)
+    except Exception as e:
+        logger.error(f"Blacklist page error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+@web_bp.route('/blacklist/add', methods=['POST'])
+@require_auth
+def blacklist_add():
+    """Add plate to blacklist"""
+    try:
+        plate = request.form.get('plate', '').strip().upper()
+        reason = request.form.get('reason', '').strip()
+        expires_days = request.form.get('expires_days', type=int)
+
+        if not plate:
+            return redirect(url_for('web.blacklist'))
+
+        expires_at = None
+        if expires_days and expires_days > 0:
+            expires_at = (date.today() + timedelta(days=expires_days)).isoformat()
+
+        BlacklistModel.add(plate, reason=reason, added_by='admin', expires_at=expires_at)
+        audit_log('blacklist_add', details=f'Added {plate}', resource_type='blacklist', resource_id=plate)
+
+        return redirect(url_for('web.blacklist'))
+    except Exception as e:
+        logger.error(f"Blacklist add error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+@web_bp.route('/blacklist/remove/<int:entry_id>', methods=['POST'])
+@require_auth
+def blacklist_remove(entry_id):
+    """Remove plate from blacklist"""
+    try:
+        BlacklistModel.delete(entry_id)
+        audit_log('blacklist_remove', details=f'Removed entry {entry_id}', resource_type='blacklist', resource_id=str(entry_id))
+        return redirect(url_for('web.blacklist'))
+    except Exception as e:
+        logger.error(f"Blacklist remove error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+# ==================== Audit Logs ====================
+
+@web_bp.route('/audit')
+@require_auth
+def audit():
+    """Audit logs page"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        action = request.args.get('action', '').strip()
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+
+        per_page = min(max(per_page, 10), 100)
+
+        total = AuditLogModel.count(
+            action=action if action else None,
+            search=search if search else None,
+            date_from=date_from if date_from else None,
+            date_to=date_to if date_to else None
+        )
+        logs_list = AuditLogModel.get_paginated(
+            page=page,
+            per_page=per_page,
+            action=action if action else None,
+            search=search if search else None,
+            date_from=date_from if date_from else None,
+            date_to=date_to if date_to else None
+        )
+
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+        actions = AuditLogModel.get_actions()
+
+        return render_template('audit.html',
+            logs=logs_list,
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            search=search,
+            action=action,
+            date_from=date_from,
+            date_to=date_to,
+            actions=actions
+        )
+    except Exception as e:
+        logger.error(f"Audit page error: {e}")
+        return render_template('error.html', error=str(e))
+
+
+# ==================== Statistics Dashboard ====================
+
+@web_bp.route('/stats')
+@require_auth
+def stats():
+    """Statistics dashboard page"""
+    try:
+        today = date.today()
+        week_ago = today - timedelta(days=7)
+
+        today_stats = AccessLogModel.get_today_stats()
+        week_stats = AccessLogModel.get_stats_by_date_range(week_ago.isoformat(), today.isoformat())
+        hourly_stats = AccessLogModel.get_hourly_stats()
+
+        # Get counts
+        vehicle_count = VehicleModel.count()
+        blacklist_count = BlacklistModel.count()
+        camera_count = AnprCameraModel.count()
+
+        return render_template('stats.html',
+            today=today_stats,
+            week=week_stats,
+            hourly=hourly_stats,
+            vehicle_count=vehicle_count,
+            blacklist_count=blacklist_count,
+            camera_count=camera_count
+        )
+    except Exception as e:
+        logger.error(f"Stats page error: {e}")
         return render_template('error.html', error=str(e))

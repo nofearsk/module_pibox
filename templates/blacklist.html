@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Blacklist - PiBox{% endblock %}
+
+{% block content %}
+<div class="blacklist-page">
+    <div class="page-header">
+        <h1>Blacklist Management</h1>
+        <span class="badge">{{ count }} active</span>
+    </div>
+
+    <!-- Add Form -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Add to Blacklist</h2>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('web.blacklist_add') }}" method="post" class="blacklist-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="plate">Plate Number *</label>
+                        <input type="text" id="plate" name="plate" required placeholder="ABC1234"
+                               style="text-transform: uppercase;" maxlength="15">
+                    </div>
+                    <div class="form-group">
+                        <label for="reason">Reason</label>
+                        <input type="text" id="reason" name="reason" placeholder="e.g., Unauthorized parking">
+                    </div>
+                    <div class="form-group">
+                        <label for="expires_days">Expires in (days)</label>
+                        <input type="number" id="expires_days" name="expires_days" placeholder="Leave empty for permanent" min="1">
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-danger">Add to Blacklist</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Blacklist Table -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Blacklisted Vehicles</h2>
+        </div>
+        <div class="card-body">
+            {% if entries %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Plate</th>
+                        <th>Reason</th>
+                        <th>Added</th>
+                        <th>Expires</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr class="{% if not entry.active %}inactive{% endif %}">
+                        <td class="plate-cell">{{ entry.plate }}</td>
+                        <td>{{ entry.reason or '-' }}</td>
+                        <td>{{ entry.added_at[:10] if entry.added_at else '-' }}</td>
+                        <td>{{ entry.expires_at[:10] if entry.expires_at else 'Never' }}</td>
+                        <td>
+                            {% if entry.active %}
+                            <span class="status-badge danger">Active</span>
+                            {% else %}
+                            <span class="status-badge">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{{ url_for('web.blacklist_remove', entry_id=entry.id) }}" method="post"
+                                  onsubmit="return confirm('Remove {{ entry.plate }} from blacklist?');">
+                                <button type="submit" class="btn btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>No vehicles in blacklist</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.blacklist-form .form-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+.blacklist-form .form-group {
+    flex: 1;
+    min-width: 150px;
+}
+.blacklist-form label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+    color: #666;
+}
+.blacklist-form input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.plate-cell {
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+tr.inactive {
+    opacity: 0.5;
+}
+.status-badge.danger {
+    background: #dc3545;
+    color: white;
+}
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+</style>
+{% endblock %}

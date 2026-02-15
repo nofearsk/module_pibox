@@ -176,6 +176,37 @@ def init_db(conn=None):
         )
     ''')
 
+    # Audit logs table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            action TEXT NOT NULL,
+            user TEXT,
+            ip_address TEXT,
+            details TEXT,
+            resource_type TEXT,
+            resource_id TEXT
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)')
+
+    # Blacklist table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS blacklist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plate TEXT NOT NULL UNIQUE,
+            reason TEXT,
+            added_by TEXT,
+            added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT,
+            active INTEGER DEFAULT 1
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_blacklist_plate ON blacklist(plate)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_blacklist_active ON blacklist(active)')
+
     conn.commit()
 
 

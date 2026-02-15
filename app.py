@@ -18,7 +18,8 @@ import atexit
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask
+from flask import Flask, session
+from datetime import timedelta
 
 # Configure logging
 logging.basicConfig(
@@ -33,10 +34,41 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('PIBOX_SECRET_KEY', 'pibox-secret-key')
 
+    # Session configuration
+    from config import config
+    session_timeout = int(config.get('session_timeout', 30))  # Default 30 minutes
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=session_timeout)
+
     # Initialize database
     from database.db import init_db, get_db
     with app.app_context():
         init_db()
+
+    # Session timeout handler
+    @app.before_request
+    def check_session_timeout():
+        from flask import request
+        from datetime import datetime
+
+        # Skip for static files and login pages
+        if request.endpoint in ['static', 'web.admin_login', 'web.admin_setup', 'web.admin_logout']:
+            return
+
+        # Make session permanent to use PERMANENT_SESSION_LIFETIME
+        session.permanent = True
+
+        # Check last activity
+        last_activity = session.get('last_activity')
+        if last_activity:
+            last_time = datetime.fromisoformat(last_activity)
+            timeout_minutes = int(config.get('session_timeout', 30))
+            if (datetime.now() - last_time).total_seconds() > timeout_minutes * 60:
+                session.clear()
+                return
+
+        # Update last activity
+        if session.get('admin_logged_in'):
+            session['last_activity'] = datetime.now().isoformat()
 
     # Register blueprints
     from routes import anpr_bp, api_bp, web_bp

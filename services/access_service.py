@@ -140,39 +140,47 @@ class AccessService:
 
         logger.info(f"Processed {len(plate_images)} plate images, {len(vehicle_images)} vehicle images")
 
-        # Look up vehicle in local database
-        vehicle = VehicleModel.get_by_plate(normalized_plate)
-
-        if vehicle and VehicleModel.is_valid(vehicle):
-            # Vehicle found and valid - grant access
-            result['access_granted'] = True
-            result['vehicle_type'] = 'resident'
-            result['vehicle_info'] = {
-                'plate': vehicle['plate'],
-                'unit_name': vehicle['unit_name'],
-                'owner_name': vehicle['owner_name'],
-                'unit_id': vehicle['unit_id']
-            }
-
-            # Get relay channels - try ANPR camera first, then barrier_mapping
-            relay_channels = []
-            if reg_code:
-                relay_channels = AnprCameraModel.get_relay_channels(reg_code)
-            if not relay_channels and camera_ip:
-                relay_channels = BarrierModel.get_relay_channels(camera_ip)
-            result['barriers_triggered'] = relay_channels
-
-            # Trigger barriers
-            pulse_duration = config.barrier_pulse_duration
-            relay_service.pulse_multiple(relay_channels, pulse_duration)
-
-            logger.info(f"Access GRANTED for {normalized_plate} - {vehicle['owner_name']} ({vehicle['unit_name']})")
-
-        else:
-            # Unknown vehicle - deny access
+        # Check blacklist first
+        from database.models import BlacklistModel
+        if BlacklistModel.is_blacklisted(normalized_plate):
+            # Blacklisted - deny access
             result['access_granted'] = False
-            result['vehicle_type'] = 'unknown'
-            logger.info(f"Access DENIED for {normalized_plate} - unknown vehicle")
+            result['vehicle_type'] = 'blacklisted'
+            logger.warning(f"Access DENIED for {normalized_plate} - BLACKLISTED")
+        else:
+            # Look up vehicle in local database
+            vehicle = VehicleModel.get_by_plate(normalized_plate)
+
+            if vehicle and VehicleModel.is_valid(vehicle):
+                # Vehicle found and valid - grant access
+                result['access_granted'] = True
+                result['vehicle_type'] = 'resident'
+                result['vehicle_info'] = {
+                    'plate': vehicle['plate'],
+                    'unit_name': vehicle['unit_name'],
+                    'owner_name': vehicle['owner_name'],
+                    'unit_id': vehicle['unit_id']
+                }
+
+                # Get relay channels - try ANPR camera first, then barrier_mapping
+                relay_channels = []
+                if reg_code:
+                    relay_channels = AnprCameraModel.get_relay_channels(reg_code)
+                if not relay_channels and camera_ip:
+                    relay_channels = BarrierModel.get_relay_channels(camera_ip)
+                result['barriers_triggered'] = relay_channels
+
+                # Trigger barriers
+                pulse_duration = config.barrier_pulse_duration
+                relay_service.pulse_multiple(relay_channels, pulse_duration)
+
+                logger.info(f"Access GRANTED for {normalized_plate} - {vehicle['owner_name']} ({vehicle['unit_name']})")
+
+            else:
+                # Unknown vehicle - deny access
+                result['access_granted'] = False
+                result['vehicle_type'] = 'unknown'
+                logger.info(f"Access DENIED for {normalized_plate} - unknown vehicle")
 
         # Get camera/barrier name for logging
         display_name = camera_name

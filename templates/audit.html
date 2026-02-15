@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs - PiBox{% endblock %}
+
+{% block content %}
+<div class="audit-page">
+    <div class="page-header">
+        <h1>Audit Logs</h1>
+        <span class="badge">{{ total }} entries</span>
+    </div>
+
+    <!-- Filters -->
+    <div class="card filters-card">
+        <form method="get" class="filters-form">
+            <div class="filter-group">
+                <label>Search</label>
+                <input type="text" name="search" value="{{ search }}" placeholder="User, IP, or details">
+            </div>
+            <div class="filter-group">
+                <label>Action</label>
+                <select name="action">
+                    <option value="">All Actions</option>
+                    {% for a in actions %}
+                    <option value="{{ a }}" {% if action == a %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>From Date</label>
+                <input type="date" name="date_from" value="{{ date_from }}">
+            </div>
+            <div class="filter-group">
+                <label>To Date</label>
+                <input type="date" name="date_to" value="{{ date_to }}">
+            </div>
+            <div class="filter-group">
+                <button type="submit" class="btn">Filter</button>
+                <a href="{{ url_for('web.audit') }}" class="btn btn-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Audit Table -->
+    <div class="card">
+        <div class="card-body">
+            {% if logs %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Action</th>
+                        <th>User</th>
+                        <th>IP Address</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td class="timestamp-cell">{{ log.timestamp[:19] }}</td>
+                        <td><span class="action-badge action-{{ log.action|replace('_', '-') }}">{{ log.action }}</span></td>
+                        <td>{{ log.user or '-' }}</td>
+                        <td class="ip-cell">{{ log.ip_address or '-' }}</td>
+                        <td>{{ log.details or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}&search={{ search }}&action={{ action }}&date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-sm">&laquo; Prev</a>
+                {% endif %}
+                <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+                {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}&search={{ search }}&action={{ action }}&date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-sm">Next &raquo;</a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="empty-state">
+                <p>No audit logs found</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.filters-card {
+    margin-bottom: 1rem;
+}
+.filters-form {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    padding: 1rem;
+}
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.filter-group label {
+    font-size: 0.85rem;
+    color: #666;
+}
+.filter-group input, .filter-group select {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 140px;
+}
+.timestamp-cell {
+    font-family: monospace;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+.ip-cell {
+    font-family: monospace;
+}
+.action-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    background: #6c757d;
+    color: white;
+}
+.action-badge.action-admin-login { background: #28a745; }
+.action-badge.action-admin-login-failed { background: #dc3545; }
+.action-badge.action-admin-logout { background: #17a2b8; }
+.action-badge.action-blacklist-add { background: #dc3545; }
+.action-badge.action-blacklist-remove { background: #ffc107; color: #333; }
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}
+.page-info {
+    color: #666;
+}
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+</style>
+{% endblock %}

@@ -6,21 +6,50 @@
 <div class="page">
     <div class="page-header">
         <h1>Access Logs</h1>
-        <div class="header-actions">
-            <form class="search-form" method="GET" action="/logs">
-                <input type="text" name="search" value="{{ search }}" placeholder="Search plate or camera...">
-                <input type="hidden" name="per_page" value="{{ per_page }}">
-                <button type="submit" class="btn btn-sm">Search</button>
-                {% if search %}
-                <a href="/logs?per_page={{ per_page }}" class="btn btn-sm">Clear</a>
-                {% endif %}
-            </form>
-            <select id="filter-type" class="filter-select" onchange="filterByType(this.value)">
-                <option value="">All Types</option>
-                <option value="resident" {% if vehicle_type == 'resident' %}selected{% endif %}>Residents</option>
-                <option value="unknown" {% if vehicle_type == 'unknown' %}selected{% endif %}>Unknown</option>
-            </select>
-        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card filters-card">
+        <form method="get" class="filters-form">
+            <div class="filter-group">
+                <label>Search</label>
+                <input type="text" name="search" value="{{ search }}" placeholder="Plate or camera">
+            </div>
+            <div class="filter-group">
+                <label>Type</label>
+                <select name="type">
+                    <option value="">All Types</option>
+                    <option value="resident" {% if vehicle_type == 'resident' %}selected{% endif %}>Residents</option>
+                    <option value="unknown" {% if vehicle_type == 'unknown' %}selected{% endif %}>Unknown</option>
+                    <option value="blacklisted" {% if vehicle_type == 'blacklisted' %}selected{% endif %}>Blacklisted</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Access</label>
+                <select name="access">
+                    <option value="">All</option>
+                    <option value="granted" {% if access_filter == 'granted' %}selected{% endif %}>Granted</option>
+                    <option value="denied" {% if access_filter == 'denied' %}selected{% endif %}>Denied</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>From Date</label>
+                <input type="date" name="date_from" value="{{ date_from }}">
+            </div>
+            <div class="filter-group">
+                <label>To Date</label>
+                <input type="date" name="date_to" value="{{ date_to }}">
+            </div>
+            <div class="filter-group">
+                <label>&nbsp;</label>
+                <button type="submit" class="btn">Filter</button>
+            </div>
+            <div class="filter-group">
+                <label>&nbsp;</label>
+                <a href="/logs" class="btn btn-secondary">Clear</a>
+            </div>
+            <input type="hidden" name="per_page" value="{{ per_page }}">
+        </form>
     </div>
 
     <!-- Stats -->
@@ -93,11 +122,12 @@
             </table>
 
             <!-- Pagination -->
+            {% set filter_params = "per_page=" ~ per_page ~ ("&search=" ~ search if search else "") ~ ("&type=" ~ vehicle_type if vehicle_type else "") ~ ("&access=" ~ access_filter if access_filter else "") ~ ("&date_from=" ~ date_from if date_from else "") ~ ("&date_to=" ~ date_to if date_to else "") %}
             {% if total_pages > 1 %}
             <div class="pagination">
                 {% if page > 1 %}
-                <a href="/logs?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">First</a>
-                <a href="/logs?page={{ page - 1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">Prev</a>
+                <a href="/logs?page=1&{{ filter_params }}">First</a>
+                <a href="/logs?page={{ page - 1 }}&{{ filter_params }}">Prev</a>
                 {% else %}
                 <span class="disabled">First</span>
                 <span class="disabled">Prev</span>
@@ -107,15 +137,15 @@
                     {% if p == page %}
                     <span class="current">{{ p }}</span>
                     {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
-                    <a href="/logs?page={{ p }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">{{ p }}</a>
+                    <a href="/logs?page={{ p }}&{{ filter_params }}">{{ p }}</a>
                     {% elif p == page - 3 or p == page + 3 %}
                     <span>...</span>
                     {% endif %}
                 {% endfor %}
 
                 {% if page < total_pages %}
-                <a href="/logs?page={{ page + 1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">Next</a>
-                <a href="/logs?page={{ total_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if vehicle_type %}&type={{ vehicle_type }}{% endif %}">Last</a>
+                <a href="/logs?page={{ page + 1 }}&{{ filter_params }}">Next</a>
+                <a href="/logs?page={{ total_pages }}&{{ filter_params }}">Last</a>
                 {% else %}
                 <span class="disabled">Next</span>
                 <span class="disabled">Last</span>
@@ -140,18 +170,38 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.filters-card {
+    margin-bottom: 1rem;
+}
+.filters-form {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    padding: 1rem;
+}
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.filter-group label {
+    font-size: 0.85rem;
+    color: #666;
+}
+.filter-group input, .filter-group select {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 120px;
+}
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+</style>
 <script>
-    function filterByType(type) {
-        const params = new URLSearchParams(window.location.search);
-        if (type) {
-            params.set('type', type);
-        } else {
-            params.delete('type');
-        }
-        params.set('page', '1');
-        window.location.href = '/logs?' + params.toString();
-    }
-
     function changePageSize(size) {
         const params = new URLSearchParams(window.location.search);
         params.set('per_page', size);

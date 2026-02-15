@@ -14,10 +14,13 @@
         </div>
         <div class="nav-links">
             <a href="/" class="{% if request.path == '/' %}active{% endif %}">Dashboard</a>
+            <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}">Stats</a>
             <a href="/vehicles" class="{% if request.path == '/vehicles' %}active{% endif %}">Vehicles</a>
             <a href="/logs" class="{% if request.path == '/logs' %}active{% endif %}">Access Logs</a>
-            <a href="/camera-feed" class="{% if request.path == '/camera-feed' %}active{% endif %}">Camera Feed</a>
+            <a href="/blacklist" class="{% if request.path == '/blacklist' %}active{% endif %}">Blacklist</a>
             <a href="/barriers" class="{% if request.path == '/barriers' %}active{% endif %}">Barriers</a>
+            <a href="/health" class="{% if request.path == '/health' %}active{% endif %}">Health</a>
+            <a href="/audit" class="{% if request.path == '/audit' %}active{% endif %}">Audit</a>
             <a href="/settings" class="{% if request.path == '/settings' %}active{% endif %}">Settings</a>
         </div>
         <div class="nav-status">

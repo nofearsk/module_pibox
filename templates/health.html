@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}System Health - PiBox{% endblock %}
+
+{% block content %}
+<div class="health-page">
+    <div class="page-header">
+        <h1>System Health</h1>
+        <button onclick="location.reload()" class="btn btn-sm">Refresh</button>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+        <div class="stat-card {% if health.cpu.load_1 > 2 %}stat-danger{% elif health.cpu.load_1 > 1 %}stat-warning{% else %}stat-success{% endif %}">
+            <div class="stat-value">{{ "%.2f"|format(health.cpu.load_1) }}</div>
+            <div class="stat-label">CPU Load (1m)</div>
+        </div>
+        <div class="stat-card {% if health.memory.percent > 80 %}stat-danger{% elif health.memory.percent > 60 %}stat-warning{% else %}stat-success{% endif %}">
+            <div class="stat-value">{{ health.memory.percent }}%</div>
+            <div class="stat-label">Memory</div>
+        </div>
+        <div class="stat-card {% if health.disk.percent > 80 %}stat-danger{% elif health.disk.percent > 60 %}stat-warning{% else %}stat-success{% endif %}">
+            <div class="stat-value">{{ health.disk.percent }}%</div>
+            <div class="stat-label">Disk</div>
+        </div>
+        <div class="stat-card {% if health.temperature and health.temperature > 70 %}stat-danger{% elif health.temperature and health.temperature > 60 %}stat-warning{% else %}stat-success{% endif %}">
+            <div class="stat-value">{{ health.temperature or 'N/A' }}{% if health.temperature %}&deg;C{% endif %}</div>
+            <div class="stat-label">Temperature</div>
+        </div>
+    </div>
+
+    <div class="card-grid">
+        <!-- CPU Details -->
+        <div class="card">
+            <div class="card-header">
+                <h2>CPU</h2>
+            </div>
+            <div class="card-body">
+                <div class="health-detail">
+                    <span class="detail-label">Load Average (1/5/15 min)</span>
+                    <span class="detail-value">{{ "%.2f"|format(health.cpu.load_1) }} / {{ "%.2f"|format(health.cpu.load_5) }} / {{ "%.2f"|format(health.cpu.load_15) }}</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill {% if health.cpu.load_1 > 2 %}danger{% elif health.cpu.load_1 > 1 %}warning{% else %}success{% endif %}"
+                         style="width: {{ [health.cpu.load_1 * 25, 100]|min }}%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Details -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Memory</h2>
+            </div>
+            <div class="card-body">
+                <div class="health-detail">
+                    <span class="detail-label">Used</span>
+                    <span class="detail-value">{{ health.memory.used_mb }} MB / {{ health.memory.total_mb }} MB</span>
+                </div>
+                <div class="health-detail">
+                    <span class="detail-label">Free</span>
+                    <span class="detail-value">{{ health.memory.free_mb }} MB</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill {% if health.memory.percent > 80 %}danger{% elif health.memory.percent > 60 %}warning{% else %}success{% endif %}"
+                         style="width: {{ health.memory.percent }}%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disk Details -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Disk</h2>
+            </div>
+            <div class="card-body">
+                <div class="health-detail">
+                    <span class="detail-label">Used</span>
+                    <span class="detail-value">{{ health.disk.used_gb }} GB / {{ health.disk.total_gb }} GB</span>
+                </div>
+                <div class="health-detail">
+                    <span class="detail-label">Free</span>
+                    <span class="detail-value">{{ health.disk.free_gb }} GB</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill {% if health.disk.percent > 80 %}danger{% elif health.disk.percent > 60 %}warning{% else %}success{% endif %}"
+                         style="width: {{ health.disk.percent }}%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Uptime -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Uptime</h2>
+            </div>
+            <div class="card-body">
+                <div class="health-detail">
+                    <span class="detail-label">System Uptime</span>
+                    <span class="detail-value">{{ health.uptime.formatted }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Network</h2>
+            </div>
+            <div class="card-body">
+                {% for iface, info in health.network.items() %}
+                <div class="health-detail">
+                    <span class="detail-label">{{ iface }}</span>
+                    <span class="detail-value">
+                        <span class="badge {% if info.state == 'up' %}badge-success{% else %}badge-danger{% endif %}">
+                            {{ info.state }}
+                        </span>
+                        {% if info.ip %}{{ info.ip }}{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.health-page .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.health-detail {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+}
+.detail-label {
+    color: #666;
+}
+.detail-value {
+    font-weight: 500;
+}
+.progress-bar {
+    height: 8px;
+    background: #eee;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+.progress-fill.success { background: #28a745; }
+.progress-fill.warning { background: #ffc107; }
+.progress-fill.danger { background: #dc3545; }
+.badge-success { background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; }
+.badge-danger { background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; }
+</style>
+{% endblock %}

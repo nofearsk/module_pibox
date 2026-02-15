@@ -6,12 +6,20 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/home/admin/pibox
-ExecStart=/usr/bin/python3 /home/admin/pibox/app.py
+ExecStart=/home/admin/pibox/venv/bin/python3 /home/admin/pibox/app.py
 Restart=always
 RestartSec=5
 Environment=PIBOX_DATA_DIR=/var/pibox
 Environment=PIBOX_HTTP_PORT=8080
 Environment=PIBOX_WS_PORT=8081
+
+# Watchdog - auto-restart if service hangs
+WatchdogSec=60
+WatchdogSignal=SIGKILL
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=80%
 
 # Logging
 StandardOutput=journal
