@@ -27,6 +27,10 @@
             <div class="stat-value">{{ health.temperature or 'N/A' }}{% if health.temperature %}&deg;C{% endif %}</div>
             <div class="stat-label">Temperature</div>
         </div>
+        <div class="stat-card {% if cameras_offline > 0 %}stat-danger{% elif cameras_unknown > 0 %}stat-warning{% else %}stat-success{% endif %}">
+            <div class="stat-value">{{ cameras_online }}/{{ camera_health|length }}</div>
+            <div class="stat-label">Cameras Online</div>
+        </div>
     </div>
 
     <div class="card-grid">
@@ -121,6 +125,47 @@
                 {% endfor %}
             </div>
         </div>
+
+        <!-- ANPR Cameras Health -->
+        <div class="card camera-health-card">
+            <div class="card-header">
+                <h2>ANPR Cameras</h2>
+                <span class="camera-summary">
+                    <span class="online">{{ cameras_online }} online</span>
+                    {% if cameras_offline > 0 %}<span class="offline">{{ cameras_offline }} offline</span>{% endif %}
+                    {% if cameras_unknown > 0 %}<span class="unknown">{{ cameras_unknown }} unknown</span>{% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                {% if camera_health %}
+                <div class="camera-list">
+                    {% for cam in camera_health %}
+                    <div class="camera-item {{ cam.status }}">
+                        <div class="camera-status-dot {{ cam.status }}"></div>
+                        <div class="camera-details">
+                            <span class="camera-name">{{ cam.name or 'Unnamed Camera' }}</span>
+                            <span class="camera-code">{{ cam.reg_code or '-' }}</span>
+                        </div>
+                        <div class="camera-last-seen">
+                            {% if cam.status == 'online' %}
+                                <span class="status-text online">Online</span>
+                            {% elif cam.status == 'offline' %}
+                                <span class="status-text offline">Offline {{ cam.offline_minutes }}m</span>
+                            {% else %}
+                                <span class="status-text unknown">No heartbeat</span>
+                            {% endif %}
+                            {% if cam.last_seen %}
+                            <span class="last-seen-time">{{ cam.last_seen[11:19] }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No ANPR cameras configured</div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 
@@ -160,5 +205,96 @@
 .progress-fill.danger { background: #dc3545; }
 .badge-success { background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; }
 .badge-danger { background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; }
+
+/* Camera Health */
+.camera-health-card { grid-column: 1 / -1; }
+.camera-health-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.camera-summary {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+}
+.camera-summary .online { color: #28a745; }
+.camera-summary .offline { color: #dc3545; }
+.camera-summary .unknown { color: #6c757d; }
+.camera-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.camera-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: rgba(255,255,255,0.05);
+    border-radius: 6px;
+    border-left: 3px solid #6c757d;
+}
+.camera-item.online { border-left-color: #28a745; }
+.camera-item.offline { border-left-color: #dc3545; }
+.camera-status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #6c757d;
+    flex-shrink: 0;
+}
+.camera-status-dot.online {
+    background: #28a745;
+    box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
+    animation: pulse 2s infinite;
+}
+.camera-status-dot.offline { background: #dc3545; }
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+.camera-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.camera-name {
+    font-weight: 500;
+    color: #fff;
+}
+.camera-code {
+    font-size: 0.8rem;
+    color: #adb5bd;
+    font-family: monospace;
+}
+.camera-last-seen {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.status-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.status-text.online { color: #28a745; }
+.status-text.offline { color: #dc3545; }
+.status-text.unknown { color: #6c757d; }
+.last-seen-time {
+    font-size: 0.75rem;
+    color: #adb5bd;
+}
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+}
+
+/* Dark theme fixes */
+.health-detail { border-bottom-color: rgba(255,255,255,0.1); }
+.detail-label { color: #adb5bd; }
+.detail-value { color: #fff; }
+.progress-bar { background: rgba(255,255,255,0.1); }
 </style>
 {% endblock %}

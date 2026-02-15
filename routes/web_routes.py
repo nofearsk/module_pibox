@@ -357,7 +357,19 @@ def health():
     """System health page"""
     try:
         health_data = system_health.get_all_health()
-        return render_template('health.html', health=health_data)
+        # Get ANPR camera health status
+        camera_health = AnprCameraModel.get_health_status(timeout_minutes=5)
+        cameras_online = sum(1 for c in camera_health if c['status'] == 'online')
+        cameras_offline = sum(1 for c in camera_health if c['status'] == 'offline')
+        cameras_unknown = sum(1 for c in camera_health if c['status'] == 'unknown')
+
+        return render_template('health.html',
+            health=health_data,
+            camera_health=camera_health,
+            cameras_online=cameras_online,
+            cameras_offline=cameras_offline,
+            cameras_unknown=cameras_unknown
+        )
     except Exception as e:
         logger.error(f"Health page error: {e}")
         return render_template('error.html', error=str(e))

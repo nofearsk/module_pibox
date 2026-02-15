@@ -164,6 +164,12 @@ def init_db(conn=None):
     except:
         pass  # Column already exists
 
+    # Migration: Add last_heartbeat column for camera health monitoring
+    try:
+        cursor.execute('ALTER TABLE anpr_cameras ADD COLUMN last_heartbeat TEXT')
+    except:
+        pass  # Column already exists
+
     # Upload queue table (for offline resilience)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS upload_queue (

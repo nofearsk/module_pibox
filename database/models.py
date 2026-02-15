@@ -763,6 +763,84 @@ class AnprCameraModel:
         )
         db.commit()
 
+    @staticmethod
+    def update_heartbeat(reg_code):
+        """Update last heartbeat timestamp for a camera"""
+        db = get_db()
+        now = datetime.now().isoformat()
+        db.execute(
+            'UPDATE anpr_cameras SET last_heartbeat = ? WHERE reg_code = ?',
+            (now, reg_code)
+        )
+        db.commit()
+
+    @staticmethod
+    def update_heartbeat_by_id(camera_id):
+        """Update last heartbeat timestamp for a camera by ID"""
+        db = get_db()
+        now = datetime.now().isoformat()
+        db.execute(
+            'UPDATE anpr_cameras SET last_heartbeat = ? WHERE id = ?',
+            (now, camera_id)
+        )
+        db.commit()
+
+    @staticmethod
+    def get_health_status(timeout_minutes=5):
+        """Get all cameras with their health status
+
+        Args:
+            timeout_minutes: Minutes without heartbeat before marking offline (default 5)
+
+        Returns:
+            List of camera dicts with 'status' field ('online'/'offline'/'unknown')
+        """
+        db = get_db()
+        cameras = db.execute(
+            'SELECT * FROM anpr_cameras WHERE active = 1 ORDER BY name'
+        ).fetchall()
+
+        result = []
+        now = datetime.now()
+
+        for cam in cameras:
+            cam_dict = dict(cam)
+            last_hb = cam_dict.get('last_heartbeat')
+
+            if not last_hb:
+                cam_dict['status'] = 'unknown'
+                cam_dict['last_seen'] = None
+            else:
+                try:
+                    last_time = datetime.fromisoformat(last_hb)
+                    diff_seconds = (now - last_time).total_seconds()
+                    cam_dict['last_seen'] = last_hb
+
+                    if diff_seconds <= timeout_minutes * 60:
+                        cam_dict['status'] = 'online'
+                    else:
+                        cam_dict['status'] = 'offline'
+                        cam_dict['offline_minutes'] = int(diff_seconds / 60)
+                except:
+                    cam_dict['status'] = 'unknown'
+                    cam_dict['last_seen'] = None
+
+            result.append(cam_dict)
+
+        return result
+
+    @staticmethod
+    def get_online_count(timeout_minutes=5):
+        """Get count of online cameras"""
+        cameras = AnprCameraModel.get_health_status(timeout_minutes)
+        return sum(1 for c in cameras if c['status'] == 'online')
+
+    @staticmethod
+    def get_offline_count(timeout_minutes=5):
+        """Get count of offline cameras"""
+        cameras = AnprCameraModel.get_health_status(timeout_minutes)
+        return sum(1 for c in cameras if c['status'] == 'offline')
+
 
 class AuditLogModel:
     """Data access for audit_logs table"""

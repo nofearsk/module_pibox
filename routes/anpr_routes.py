@@ -147,6 +147,8 @@ def hikfeed(code="", password=""):
             if camera:
                 location_id = camera['location_id']
                 logger.info(f"Camera identified: {camera['name']} (code: {code}, location_id: {location_id})")
+                # Update heartbeat on ANPR event
+                AnprCameraModel.update_heartbeat(code)
             else:
                 logger.warning(f"Unknown camera code: {code}")
 
@@ -250,6 +252,8 @@ def generic_event():
             if camera:
                 location_id = camera['location_id']
                 logger.info(f"Camera identified: {camera['name']} (reg_code: {reg_code}, location_id: {location_id})")
+                # Update heartbeat on ANPR event
+                AnprCameraModel.update_heartbeat(reg_code)
             else:
                 logger.warning(f"Unknown camera reg_code: {reg_code}")
 
@@ -289,6 +293,46 @@ def generic_event():
 
     except Exception as e:
         logger.error(f"Error processing generic event: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@anpr_bp.route('/api/anpr/heartbeat', methods=['POST', 'GET'])
+@anpr_bp.route('/api/anpr/heartbeat/<string:reg_code>', methods=['POST', 'GET'])
+def camera_heartbeat(reg_code=None):
+    """
+    Camera heartbeat endpoint - cameras should call every 60-90 seconds
+
+    URL formats:
+    - /api/anpr/heartbeat/<reg_code>
+    - /api/anpr/heartbeat?reg_code=XXX
+
+    Returns camera status and any pending commands
+    """
+    try:
+        if not reg_code:
+            reg_code = request.args.get('reg_code') or request.args.get('code')
+
+        if not reg_code:
+            return jsonify({'success': False, 'error': 'reg_code required'}), 400
+
+        camera = AnprCameraModel.get_by_reg_code(reg_code)
+        if not camera:
+            logger.warning(f"Heartbeat from unknown camera: {reg_code}")
+            return jsonify({'success': False, 'error': 'Unknown camera'}), 404
+
+        # Update heartbeat timestamp
+        AnprCameraModel.update_heartbeat(reg_code)
+        logger.debug(f"Heartbeat received from {camera['name']} ({reg_code})")
+
+        return jsonify({
+            'success': True,
+            'camera_name': camera['name'],
+            'reg_code': reg_code,
+            'timestamp': __import__('datetime').datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Heartbeat error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
