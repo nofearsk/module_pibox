@@ -430,7 +430,7 @@ class OdooAPI:
             'units.vehicles',
             domain=domain,
             fields=['id', 'vehicle_number', 'iunumber', 'unit_id', 'name',
-                    'validfrom', 'validto', 'owner_id', 'partner_id', 'owner_name']
+                    'validfrom', 'validto', 'partner_id', 'owner_name']
         )
 
     def get_locations(self, site_id=None, active_only=True):
