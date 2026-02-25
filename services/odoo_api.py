@@ -371,8 +371,9 @@ class OdooAPI:
             'domain': domain or [],
             'fields': fields or ['id', 'name'],
             'offset': offset,
-            'limit': limit,
         }
+        if limit:
+            kwargs['limit'] = limit
         if order:
             kwargs['order'] = order
 
@@ -430,7 +431,8 @@ class OdooAPI:
             'units.vehicles',
             domain=domain,
             fields=['id', 'vehicle_number', 'iunumber', 'unit_id', 'name',
-                    'validfrom', 'validto']
+                    'validfrom', 'validto'],
+            limit=0
         )
 
     def get_locations(self, site_id=None, active_only=True):
