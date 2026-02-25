@@ -584,6 +584,27 @@ def clear_all_data():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@api_bp.route('/api/system/cleanup-status')
+def cleanup_status():
+    """Get image cleanup status and disk info"""
+    try:
+        from services.cleanup_service import cleanup_service
+        return jsonify({'success': True, **cleanup_service.get_status()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/system/cleanup-now', methods=['POST'])
+def cleanup_now():
+    """Trigger immediate image cleanup"""
+    try:
+        from services.cleanup_service import cleanup_service
+        cleanup_service.run_cleanup()
+        return jsonify({'success': True, **cleanup_service.get_status()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @api_bp.route('/api/system/factory-reset', methods=['POST'])
 def factory_reset():
     """Factory reset - clear all data AND logout"""

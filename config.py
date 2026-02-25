@@ -43,6 +43,7 @@ DEFAULTS = {
     # Barrier Control
     'barrier_pulse_duration': '1.0',  # Pulse duration in seconds
     'image_retention_days': '7',      # Days to keep local images
+    'disk_threshold_percent': '85',   # Auto-delete oldest images when disk exceeds this %
 
     # Relay Mode: 'gpio' or 'web' (Iotzone V5+ Ethernet Relay)
     'relay_mode': 'gpio',             # Default to GPIO relay

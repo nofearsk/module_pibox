@@ -126,6 +126,7 @@ def start_services():
     from services.relay_service import relay_service
     from services.sync_service import sync_service
     from services.websocket_service import websocket_service
+    from services.cleanup_service import cleanup_service
     from config import config
 
     # Initialize GPIO
@@ -134,6 +135,9 @@ def start_services():
 
     # Start WebSocket server
     websocket_service.start(port=8081)
+
+    # Start image cleanup service
+    cleanup_service.start()
 
     # Start sync service only if configured
     if config.is_configured:
@@ -149,9 +153,11 @@ def stop_services():
     from services.relay_service import relay_service
     from services.sync_service import sync_service
     from services.websocket_service import websocket_service
+    from services.cleanup_service import cleanup_service
 
     logger.info("Stopping services...")
 
+    cleanup_service.stop()
     sync_service.stop_sync_loop()
     websocket_service.stop()
     relay_service.cleanup()
