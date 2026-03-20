@@ -47,7 +47,31 @@
       "Bash(/odoo/custom/addons/module_pibox/pibox.service )",
       "Bash(admin@192.168.1.238:/home/admin/pibox/)",
       "Bash(/odoo/custom/addons/module_pibox/services/system_health.py )",
-      "Bash(/odoo/custom/addons/module_pibox/templates/*.html)"
+      "Bash(/odoo/custom/addons/module_pibox/templates/*.html)",
+      "Bash(ss -tlnp)",
+      "Bash(netstat -tlnp)",
+      "Bash(git remote get-url origin)",
+      "Bash(ssh-keygen -f \"/root/.ssh/known_hosts\" -R \"[localhost]:2222\")",
+      "Bash(for f in nvr_ch1.jpg nvr_ch2.jpg nvr_ch3.jpg nvr_ch8.jpg)",
+      "Bash(do sshpass -p 'Pico@1995' scp -o StrictHostKeyChecking=no -P 2223 \"pico@localhost:/tmp/cam_snaps/$f\" \"/tmp/cam_snaps/$f\")",
+      "Bash(done)",
+      "Bash(pip install openpyxl)",
+      "Bash(sudo lsof -i :8800 -i :8081)",
+      "Bash(sudo ss -tlnp 'sport = :8800 or sport = :8081')",
+      "Bash(ps -p 1989032 -o pid,user,cmd --no-headers)",
+      "Bash(sudo kill 1989032)",
+      "Bash(sudo lsof -i :8081)",
+      "Bash(echo \"exit: $?\")",
+      "Read(//etc/**)",
+      "Bash(sudo -u odoo psql -l)",
+      "Bash(psql -U odoo -l)",
+      "Bash(sudo -u postgres psql -l)",
+      "Bash(sudo -u odoo python3 -c \":*)",
+      "Bash(sudo -u odoo psql -d mypico -c \"UPDATE res_users SET password = ''$pbkdf2-sha512$25000$MybkvJfSOmcMASDEGCOkFA$oEoN9KjtpTt/.A4zyPC74htgAJBppVQxTkT5uNK6iPlTq6QjvlrH9LaM9dONKTzYrecMXIBKl645240dx46HHw'' WHERE login = ''admin'';\")",
+      "Bash(sudo -u odoo psql -d mypico -c \"SELECT id, login, active FROM res_users WHERE id <= 5 OR login ILIKE ''%admin%'' ORDER BY id;\")",
+      "Bash(sudo -u odoo psql -d mypico -c \"UPDATE res_users SET password = ''$pbkdf2-sha512$25000$MybkvJfSOmcMASDEGCOkFA$oEoN9KjtpTt/.A4zyPC74htgAJBppVQxTkT5uNK6iPlTq6QjvlrH9LaM9dONKTzYrecMXIBKl645240dx46HHw'' WHERE id = 2;\")",
+      "Bash(sqlite3 /var/pibox/pibox.db \"SELECT key, value FROM config WHERE key = ''admin_password_hash'';\")",
+      "Bash(apt list --installed)"
     ]
   }
 }
