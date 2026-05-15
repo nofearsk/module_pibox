@@ -484,6 +484,329 @@ def update_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ============== LPR / Snapshot Cameras ==============
+
+@api_bp.route('/api/lpr/status', methods=['GET'])
+def lpr_status():
+    """Current LPR engine + ANPR manager status."""
+    try:
+        from services.lpr_service import lpr_service
+        from services.anpr_manager import anpr_manager
+        return jsonify({
+            'success': True,
+            'engine': lpr_service.get_status(),
+            'manager': anpr_manager.get_status(),
+            'enabled': config.get('lpr_enabled', 'false').lower() == 'true',
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/lpr/enable', methods=['POST'])
+def lpr_enable():
+    """Enable/disable the local LPR engine (snapshot backend depends on it)."""
+    try:
+        from services.lpr_service import lpr_service
+        from services.anpr_manager import anpr_manager
+        data = request.get_json() or {}
+        enabled = bool(data.get('enabled'))
+
+        config.set('lpr_enabled', 'true' if enabled else 'false')
+
+        if enabled:
+            lpr_service.init_engine()
+
+        # Manager runs regardless (SDK backends don't need the LPR engine),
+        # but reconcile immediately so the change takes effect.
+        anpr_manager.start()
+        anpr_manager.reconcile()
+
+        return jsonify({'success': True, 'engine': lpr_service.get_status()})
+    except Exception as e:
+        logger.error("lpr_enable failed: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/anpr-cameras/<int:camera_id>/feed', methods=['PUT', 'POST'])
+def update_camera_feed(camera_id):
+    """Update feed-mode config on an ANPR camera (mode + mode-specific fields)."""
+    try:
+        from services.anpr_manager import anpr_manager
+        cam = AnprCameraModel.get_by_id(camera_id)
+        if not cam:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        data = request.get_json() or {}
+        AnprCameraModel.update_feed_config(
+            camera_id,
+            feed_mode=data.get('feed_mode'),
+            feed_enabled=data.get('feed_enabled'),
+            snapshot_url=data.get('snapshot_url'),
+            poll_interval_seconds=data.get('poll_interval_seconds'),
+            min_confidence=data.get('min_confidence'),
+            sdk_host=data.get('sdk_host'),
+            sdk_port=data.get('sdk_port'),
+            sdk_username=data.get('sdk_username'),
+            sdk_password=data.get('sdk_password'),
+            rtsp_url=data.get('rtsp_url'),
+            detect_region=data.get('detect_region'),
+            min_read_score=data.get('min_read_score'),
+            min_ratio_score=data.get('min_ratio_score'),
+            max_first_detect_seconds=data.get('max_first_detect_seconds'),
+            max_last_detect_seconds=data.get('max_last_detect_seconds'),
+            max_valid_detect_seconds=data.get('max_valid_detect_seconds'),
+        )
+        # Reconcile so workers start/stop right away
+        anpr_manager.reconcile()
+        return jsonify({'success': True, 'camera': dict(AnprCameraModel.get_by_id(camera_id))})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error("update_camera_feed failed: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/anpr-cameras/<int:camera_id>/snap', methods=['GET', 'POST'])
+def snap_rtsp_frame(camera_id):
+    """Grab one frame from the camera's RTSP URL and return it as JPEG.
+
+    Used by the detect-region cropper UI. Accepts ?rtsp_url= override (POST
+    body or query string) so users can preview before saving.
+    """
+    try:
+        cam = AnprCameraModel.get_by_id(camera_id)
+        if not cam:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        override = (request.get_json(silent=True) or {}).get('rtsp_url') \
+            or request.args.get('rtsp_url')
+        url = override or cam['rtsp_url']
+        if not url:
+            return jsonify({'success': False, 'error': 'No rtsp_url set'}), 400
+
+        try:
+            import cv2
+        except ImportError:
+            return jsonify({
+                'success': False,
+                'error': 'OpenCV (cv2) not installed on this PiBox',
+            }), 501
+
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        if not cap.isOpened():
+            cap.release()
+            return jsonify({'success': False, 'error': 'Could not open RTSP stream'}), 502
+
+        frame = None
+        # Skip a few frames — first frames after open are often blank/corrupt
+        for _ in range(5):
+            ok, f = cap.read()
+            if ok and f is not None:
+                frame = f
+                break
+        cap.release()
+
+        if frame is None:
+            return jsonify({'success': False, 'error': 'No frame read from stream'}), 502
+
+        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return jsonify({'success': False, 'error': 'JPEG encode failed'}), 500
+
+        from flask import Response
+        return Response(buf.tobytes(), mimetype='image/jpeg', headers={
+            'X-Frame-Width': str(frame.shape[1]),
+            'X-Frame-Height': str(frame.shape[0]),
+            'Cache-Control': 'no-store',
+        })
+    except Exception as e:
+        logger.error("snap_rtsp_frame failed: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/anpr-cameras/<int:camera_id>/preview', methods=['GET'])
+def preview_camera_frame(camera_id):
+    """Mode-aware live preview: grab one JPEG from the camera.
+
+    RTSP mode: open the rtsp_url and read one frame.
+    Snapshot mode: HTTP-GET the snapshot_url.
+    Used by the camera config UI to show a refreshing thumbnail.
+    """
+    try:
+        cam = AnprCameraModel.get_by_id(camera_id)
+        if not cam:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        from flask import Response
+        mode = cam['feed_mode'] or 'http_push'
+
+        if mode == 'snapshot':
+            url = request.args.get('snapshot_url') or cam['snapshot_url']
+            if not url:
+                return jsonify({'success': False, 'error': 'No snapshot_url set'}), 400
+            from services.anpr_backends.snapshot import _fetch_snapshot
+            image_bytes = _fetch_snapshot(url)
+            return Response(image_bytes, mimetype='image/jpeg',
+                            headers={'Cache-Control': 'no-store'})
+
+        if mode == 'rtsp':
+            try:
+                import cv2
+            except ImportError:
+                return jsonify({'success': False, 'error': 'OpenCV not installed'}), 501
+
+            # Fast path: if an RTSP worker is already running for this
+            # camera, reuse its latest decoded frame. Sub-second response.
+            override_url = request.args.get('rtsp_url')
+            if not override_url:
+                from services.anpr_manager import anpr_manager
+                rtsp_backend = anpr_manager.backends.get('rtsp')
+                if rtsp_backend:
+                    live_frame = rtsp_backend.get_latest_frame(camera_id)
+                    if live_frame is not None:
+                        ok, buf = cv2.imencode('.jpg', live_frame,
+                                               [cv2.IMWRITE_JPEG_QUALITY, 70])
+                        if ok:
+                            return Response(
+                                buf.tobytes(), mimetype='image/jpeg',
+                                headers={'Cache-Control': 'no-store',
+                                         'X-Frame-Width': str(live_frame.shape[1]),
+                                         'X-Frame-Height': str(live_frame.shape[0]),
+                                         'X-Frame-Source': 'worker'})
+
+            # Slow path (no live worker / preview-before-save with override
+            # URL): open a fresh capture.
+            url = override_url or cam['rtsp_url']
+            if not url:
+                return jsonify({'success': False, 'error': 'No rtsp_url set'}), 400
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+            if not cap.isOpened():
+                cap.release()
+                return jsonify({'success': False, 'error': 'Could not open RTSP'}), 502
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+            frame = None
+            for _ in range(5):
+                ok, f = cap.read()
+                if ok and f is not None:
+                    frame = f
+                    break
+            cap.release()
+            if frame is None:
+                return jsonify({'success': False, 'error': 'No frame read'}), 502
+            ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if not ok:
+                return jsonify({'success': False, 'error': 'JPEG encode failed'}), 500
+            return Response(buf.tobytes(), mimetype='image/jpeg',
+                            headers={'Cache-Control': 'no-store',
+                                     'X-Frame-Width': str(frame.shape[1]),
+                                     'X-Frame-Height': str(frame.shape[0]),
+                                     'X-Frame-Source': 'fresh'})
+
+        return jsonify({'success': False, 'error': f'preview not supported for mode {mode}'}), 400
+    except Exception as e:
+        logger.error("preview_camera_frame failed: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/anpr-cameras/<int:camera_id>/detect-region', methods=['POST', 'PUT'])
+def save_detect_region(camera_id):
+    """Persist a detect_region "x1 y1 x2 y2" for a camera."""
+    try:
+        cam = AnprCameraModel.get_by_id(camera_id)
+        if not cam:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        data = request.get_json() or {}
+        # Accept either a {x1,y1,x2,y2} object or a pre-formatted string
+        if 'detect_region' in data and isinstance(data['detect_region'], str):
+            region_str = data['detect_region'].strip()
+        else:
+            try:
+                x1 = int(round(float(data['x1'])))
+                y1 = int(round(float(data['y1'])))
+                x2 = int(round(float(data['x2'])))
+                y2 = int(round(float(data['y2'])))
+            except (KeyError, TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'x1,y1,x2,y2 required'}), 400
+            if x2 <= x1 or y2 <= y1:
+                return jsonify({'success': False, 'error': 'invalid region'}), 400
+            region_str = f'{x1} {y1} {x2} {y2}'
+
+        AnprCameraModel.update_feed_config(camera_id, detect_region=region_str)
+        from services.anpr_manager import anpr_manager
+        anpr_manager.reconcile()
+        return jsonify({'success': True, 'detect_region': region_str})
+    except Exception as e:
+        logger.error("save_detect_region failed: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Back-compat alias for the older route name
+@api_bp.route('/api/snapshot-cameras/<int:camera_id>', methods=['PUT', 'POST'])
+def update_snapshot_camera(camera_id):
+    """Legacy endpoint (snapshot mode only). Prefer /api/anpr-cameras/<id>/feed."""
+    data = request.get_json() or {}
+    data.setdefault('feed_mode', 'snapshot')
+    if 'snapshot_enabled' in data and 'feed_enabled' not in data:
+        data['feed_enabled'] = data['snapshot_enabled']
+    # Forward by calling the shared model updater directly (avoid redirect)
+    try:
+        from services.anpr_manager import anpr_manager
+        cam = AnprCameraModel.get_by_id(camera_id)
+        if not cam:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+        AnprCameraModel.update_feed_config(
+            camera_id,
+            feed_mode=data.get('feed_mode'),
+            feed_enabled=data.get('feed_enabled'),
+            snapshot_url=data.get('snapshot_url'),
+            poll_interval_seconds=data.get('poll_interval_seconds'),
+            min_confidence=data.get('min_confidence'),
+        )
+        anpr_manager.reconcile()
+        return jsonify({'success': True, 'camera': dict(AnprCameraModel.get_by_id(camera_id))})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/snapshot-cameras/<int:camera_id>/test', methods=['POST'])
+def test_snapshot_camera(camera_id):
+    """Fetch one frame, run ANPR, return the detected plate (no access trigger)."""
+    try:
+        from services.lpr_service import lpr_service
+        from services.anpr_backends.snapshot import _fetch_snapshot
+        import base64
+
+        cam = AnprCameraModel.get_by_id(camera_id)
+        if not cam:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        override_url = (request.get_json(silent=True) or {}).get('snapshot_url')
+        url = override_url or cam['snapshot_url']
+        if not url:
+            return jsonify({'success': False, 'error': 'No snapshot_url set'}), 400
+
+        image_bytes = _fetch_snapshot(url)
+        result = lpr_service.analyze(image_bytes,
+                                     min_confidence=float(cam['min_confidence'] or 0.5))
+
+        return jsonify({
+            'success': True,
+            'plate': result['plate'] if result else None,
+            'confidence': result['confidence'] if result else None,
+            'country': result['country'] if result else None,
+            'image_size': len(image_bytes) if image_bytes else 0,
+            'preview': 'data:image/jpeg;base64,' + base64.b64encode(image_bytes).decode()
+                       if image_bytes else None,
+        })
+    except Exception as e:
+        logger.error("test_snapshot_camera failed: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============== Health ==============
 
 @api_bp.route('/api/health', methods=['GET'])

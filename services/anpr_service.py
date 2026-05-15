@@ -156,7 +156,17 @@ class ANPRService:
         return result
 
     def parse_dahua_event(self, data):
-        """Parse Dahua ANPR event (for future use)"""
+        """
+        Parse a Dahua ITC ANPR event. The camera can deliver the event in
+        several shapes depending on whether you configured "Upload Picture
+        → HTTP Server" or the alarm-listen API. We probe the common ones.
+
+        Recognised shapes:
+        - flat JSON: {"PlateNumber":"SLY1234A","Confidence":94,...}
+        - nested:    {"Picture":{"Plate":{"PlateNumber":"...","Confidence":94}}}
+        - alarm:     {"Events":[{"Object":{"PlateNumber":"...","Confidence":94}}]}
+        - form-data: same keys but as a dict from request.form
+        """
         result = {
             'plate': None,
             'confidence': 0,
@@ -166,22 +176,62 @@ class ANPRService:
             'direction': None,
             'camera_ip': None
         }
+        if not data:
+            return result
 
         try:
-            if isinstance(data, dict):
-                # Dahua typically uses 'PlateNumber' field
-                if 'PlateNumber' in data:
-                    result['plate'] = str(data['PlateNumber']).strip().upper()
-                elif 'plateNumber' in data:
-                    result['plate'] = str(data['plateNumber']).strip().upper()
+            plate = self._find_first(data, (
+                'PlateNumber', 'plateNumber', 'Plate', 'plate',
+                'Picture.Plate.PlateNumber',
+                'Events.0.Object.PlateNumber',
+                'Events.0.Data.PlateNumber',
+                'Data.PlateNumber',
+            ))
+            if plate:
+                result['plate'] = str(plate).strip().upper()
 
-                if 'Confidence' in data:
-                    result['confidence'] = float(data['Confidence'])
+            conf = self._find_first(data, (
+                'Confidence', 'confidence', 'PlateConfidence',
+                'Picture.Plate.Confidence',
+                'Events.0.Object.Confidence',
+            ))
+            if conf is not None:
+                try:
+                    result['confidence'] = float(conf)
+                    # Dahua often returns 0-100; normalise to 0-1 for consistency
+                    if result['confidence'] > 1.5:
+                        result['confidence'] = result['confidence'] / 100.0
+                except (TypeError, ValueError):
+                    pass
+
+            direction = self._find_first(data, (
+                'Direction', 'direction', 'Picture.Vehicle.Direction',
+            ))
+            if direction:
+                result['direction'] = str(direction).lower()
 
         except Exception as e:
-            logger.error(f"Error parsing Dahua event: {e}")
+            logger.error("Error parsing Dahua event: %s", e)
 
         return result
+
+    @staticmethod
+    def _find_first(obj, paths):
+        """Walk an object/dict by dotted paths; return first value found."""
+        for path in paths:
+            cur = obj
+            ok = True
+            for part in path.split('.'):
+                if isinstance(cur, dict) and part in cur:
+                    cur = cur[part]
+                elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
+                    cur = cur[int(part)]
+                else:
+                    ok = False
+                    break
+            if ok and cur not in (None, '', [], {}):
+                return cur
+        return None
 
     def save_image(self, image_data, plate, image_type='plate'):
         """

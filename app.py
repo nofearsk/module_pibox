@@ -127,6 +127,8 @@ def start_services():
     from services.sync_service import sync_service
     from services.websocket_service import websocket_service
     from services.cleanup_service import cleanup_service
+    from services.lpr_service import lpr_service
+    from services.anpr_manager import anpr_manager
     from config import config
 
     # Initialize GPIO
@@ -138,6 +140,13 @@ def start_services():
 
     # Start image cleanup service
     cleanup_service.start()
+
+    # Initialize local LPR engine (needed by snapshot backend)
+    if config.get('lpr_enabled', 'false').lower() == 'true':
+        lpr_service.init_engine()
+
+    # ANPR manager reconciles cameras with per-mode backends
+    anpr_manager.start()
 
     # Start sync service only if configured
     if config.is_configured:
@@ -154,9 +163,11 @@ def stop_services():
     from services.sync_service import sync_service
     from services.websocket_service import websocket_service
     from services.cleanup_service import cleanup_service
+    from services.anpr_manager import anpr_manager
 
     logger.info("Stopping services...")
 
+    anpr_manager.stop()
     cleanup_service.stop()
     sync_service.stop_sync_loop()
     websocket_service.stop()

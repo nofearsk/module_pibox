@@ -349,6 +349,36 @@ def camera_feed():
         return render_template('error.html', error=str(e))
 
 
+@web_bp.route('/snapshot-cameras')
+@require_auth
+def snapshot_cameras():
+    """Snapshot camera config — pull snapshot URLs, run local ANPR."""
+    try:
+        from services.lpr_service import lpr_service
+        from services.anpr_manager import anpr_manager
+
+        cameras_raw = AnprCameraModel.get_all()
+        cameras = []
+        for cam in cameras_raw:
+            cam_dict = dict(cam)
+            if cam['location_id']:
+                loc = LocationModel.get_by_odoo_id(cam['location_id'])
+                cam_dict['location_name'] = loc['name'] if loc else None
+            else:
+                cam_dict['location_name'] = None
+            cameras.append(cam_dict)
+
+        return render_template('snapshot_cameras.html',
+            cameras=cameras,
+            lpr_status=lpr_service.get_status(),
+            manager_status=anpr_manager.get_status(),
+            lpr_enabled=config.get('lpr_enabled', 'false').lower() == 'true',
+        )
+    except Exception as e:
+        logger.error(f"Snapshot cameras page error: {e}")
+        return render_template('error.html', error=str(e))
+
+
 # ==================== System Health ====================
 
 @web_bp.route('/health')

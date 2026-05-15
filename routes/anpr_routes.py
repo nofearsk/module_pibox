@@ -6,6 +6,7 @@ Camera identification is done via reg_code (registration code) instead of IP add
 Each camera has a unique reg_code configured in Odoo, which maps to a location.
 """
 from flask import request, jsonify
+import base64
 import logging
 import xml.etree.ElementTree as ET
 
@@ -16,6 +17,107 @@ from services.websocket_service import websocket_service
 from database.models import AnprCameraModel, LocationModel
 
 logger = logging.getLogger(__name__)
+
+
+# Field names commonly used by Dahua ITC firmwares for the plate crop vs
+# the full-scene snapshot. Tried in order; first hit wins. The first two
+# entries match what the ITC firmware on 192.168.1.113 actually sends.
+_DAHUA_PLATE_IMAGE_KEYS = (
+    'Picture.CutoutPic.Content',
+    'Picture.Plate.Image',
+    'PlateImage', 'PlateCutPic', 'plateImage', 'plate_image',
+    'Plate.Data', 'Picture.PlateImage',
+    'Picture.Plate.Data', 'Picture.Plate.Content',
+)
+_DAHUA_VEHICLE_IMAGE_KEYS = (
+    'Picture.NormalPic.Content',
+    'Picture.SceneImage',
+    'Image', 'ImageData', 'SceneImage', 'BigImage', 'Picture.Data',
+    'Picture.Image', 'Picture.Content',
+    'Picture.Vehicle.Image',
+)
+
+
+def _walk_path(obj, dotted):
+    cur = obj
+    for part in dotted.split('.'):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
+            cur = cur[int(part)]
+        else:
+            return None
+    return cur
+
+
+def _decode_b64(value):
+    """Decode a base64 string (with or without 'data:image/...;base64,' prefix)."""
+    if not isinstance(value, str) or len(value) < 100:
+        return None
+    s = value
+    if s.startswith('data:') and ';base64,' in s:
+        s = s.split(';base64,', 1)[1]
+    try:
+        raw = base64.b64decode(s, validate=False)
+    except Exception:
+        return None
+    # Sanity: JPEG starts with FFD8, PNG with 89504E47
+    if len(raw) > 4 and (raw[:2] == b'\xff\xd8' or raw[:4] == b'\x89PNG'):
+        return raw
+    return None
+
+
+def _extract_dahua_image(data, prefer='plate'):
+    """Find a base64 image somewhere in the Dahua JSON payload."""
+    if not isinstance(data, dict):
+        return None
+    keys = _DAHUA_PLATE_IMAGE_KEYS if prefer == 'plate' else _DAHUA_VEHICLE_IMAGE_KEYS
+    for path in keys:
+        val = _walk_path(data, path)
+        img = _decode_b64(val)
+        if img:
+            logger.info("Dahua image found at %s (%d bytes)", path, len(img))
+            return img
+    # Last-resort scan: find any long base64-looking string anywhere
+    return _scan_for_b64_image(data)
+
+
+def _scan_for_b64_image(obj, depth=0):
+    if depth > 6:
+        return None
+    if isinstance(obj, str):
+        return _decode_b64(obj)
+    if isinstance(obj, dict):
+        for v in obj.values():
+            r = _scan_for_b64_image(v, depth + 1)
+            if r:
+                return r
+    elif isinstance(obj, list):
+        for v in obj:
+            r = _scan_for_b64_image(v, depth + 1)
+            if r:
+                return r
+    return None
+
+
+def _summarise(obj, depth=0, max_depth=3, max_str=40):
+    """One-line structural map of a nested dict/list with truncated leaf previews."""
+    if depth >= max_depth:
+        return '…'
+    if isinstance(obj, dict):
+        return '{' + ', '.join(
+            f'{k}={_summarise(v, depth+1, max_depth, max_str)}'
+            for k, v in list(obj.items())[:20]
+        ) + '}'
+    if isinstance(obj, list):
+        if not obj:
+            return '[]'
+        return f'[{len(obj)} × {_summarise(obj[0], depth+1, max_depth, max_str)}]'
+    if isinstance(obj, str):
+        if len(obj) > max_str:
+            return f'<str len={len(obj)}>'
+        return repr(obj)
+    return repr(obj)
 
 
 @anpr_bp.route('/hikfeed', methods=['GET', 'POST'])
@@ -184,30 +286,139 @@ def hikfeed(code="", password=""):
 
 
 @anpr_bp.route('/api/anpr/dahua', methods=['POST'])
-def dahua_event():
+@anpr_bp.route('/api/anpr/dahua/<string:reg_code>', methods=['POST'])
+@anpr_bp.route('/dahuafeed', methods=['POST'])
+@anpr_bp.route('/dahuafeed/<string:reg_code>', methods=['POST'])
+@anpr_bp.route('/dahuafeed/<string:reg_code>/<string:password>', methods=['POST'])
+def dahua_event(reg_code=None, password=None):
     """
-    Receive Dahua ANPR events (for future use)
+    Receive Dahua ITC ANPR events.
+
+    Camera config: enable "Upload Picture → HTTP Server" and point it at
+    `http://<pibox>:8080/api/anpr/dahua/<reg_code>` (or the unsuffixed URL).
+
+    The camera can deliver:
+    - application/json
+    - application/x-www-form-urlencoded
+    - multipart/form-data (image parts + a JSON metadata part — common for
+      the "HTTP Picture Server" path on ITC cameras)
     """
     try:
         camera_ip = request.remote_addr
-        data = request.get_json(force=True) if request.is_json else dict(request.form)
+        content_type = (request.content_type or '').lower()
+        logger.info("Dahua event from %s reg=%s ct=%s len=%s",
+                    camera_ip, reg_code, content_type,
+                    request.content_length)
+
+        plate_image_bytes = None
+        vehicle_image_bytes = None
+        data = None
+
+        if 'multipart' in content_type:
+            # ITC HTTP Picture Server: one or more image parts + a JSON
+            # text part. Field names vary by firmware; sniff for either.
+            for fname, fstorage in request.files.items():
+                blob = fstorage.read()
+                if not blob:
+                    continue
+                lname = (fname or '').lower()
+                if not plate_image_bytes and ('plate' in lname or 'snap' in lname):
+                    plate_image_bytes = blob
+                elif not vehicle_image_bytes:
+                    vehicle_image_bytes = blob
+                else:
+                    plate_image_bytes = plate_image_bytes or blob
+            # JSON metadata may arrive in form fields like "info", "data",
+            # "metadata", or just as a stringified blob.
+            form_kv = dict(request.form)
+            for key in ('info', 'data', 'metadata', 'Picture', 'Event'):
+                raw = form_kv.get(key)
+                if raw and isinstance(raw, str) and raw.strip().startswith('{'):
+                    try:
+                        import json
+                        data = json.loads(raw)
+                        break
+                    except Exception:
+                        pass
+            if data is None:
+                data = form_kv
+        elif 'json' in content_type:
+            data = request.get_json(force=True, silent=True) or {}
+        else:
+            data = dict(request.form) if request.form else {}
+            # Some firmwares post a bare JSON body with form content-type.
+            if not data and request.data:
+                try:
+                    import json
+                    data = json.loads(request.data.decode('utf-8', 'ignore'))
+                except Exception:
+                    data = {}
+
+        logger.info("Dahua event payload keys: %s", list(data.keys()) if isinstance(data, dict) else type(data).__name__)
+        if isinstance(data, dict) and logger.isEnabledFor(logging.DEBUG) is False:
+            # One-line structural summary so we can see image-field paths
+            # without dumping megabytes of base64. INFO-level so it shows up.
+            logger.info("Dahua event structure: %s", _summarise(data))
+
+        # Extract any base64 images embedded in the JSON.
+        if not plate_image_bytes:
+            plate_image_bytes = _extract_dahua_image(data, prefer='plate')
+        if not vehicle_image_bytes:
+            vehicle_image_bytes = _extract_dahua_image(data, prefer='vehicle')
 
         event = anpr_service.parse_dahua_event(data)
         event['camera_ip'] = camera_ip
 
         if not event.get('plate'):
+            # Heartbeats / keepalives have no plate — silently 200 so the
+            # camera doesn't think we're broken and back off.
+            if isinstance(data, dict) and (data.get('Active') == 'keepAlive'
+                                            or data.get('Action') == 'Heartbeat'):
+                return jsonify({'success': True, 'noop': 'keepalive'}), 200
+            logger.warning("Dahua event has no plate; payload keys: %s",
+                           list(data.keys()) if isinstance(data, dict) else None)
             return jsonify({'success': False, 'error': 'No plate number detected'}), 400
+
+        # Look up camera by reg_code (if URL supplied one) so we can attach
+        # location / relay channels just like the Hikvision push path does.
+        camera = None
+        camera_id = None
+        location_id = None
+        camera_name = None
+        if reg_code:
+            from database.models import AnprCameraModel
+            camera = AnprCameraModel.get_by_reg_code(reg_code)
+            if camera:
+                camera_id = camera['id']
+                location_id = camera['location_id']
+                camera_name = camera['name']
+                try:
+                    AnprCameraModel.update_heartbeat(reg_code)
+                    AnprCameraModel.record_capture(camera_id, event['plate'])
+                except Exception:
+                    pass
+
+        plate_images = []
+        if plate_image_bytes:
+            plate_images.append({'filename': 'plate.jpg', 'data': plate_image_bytes})
+        vehicle_images = []
+        if vehicle_image_bytes:
+            vehicle_images.append({'filename': 'vehicle.jpg', 'data': vehicle_image_bytes})
 
         result = access_service.process_vehicle(
             plate=event['plate'],
             camera_ip=camera_ip,
-            plate_image=event.get('plate_image'),  # Legacy single image
-            vehicle_image=event.get('vehicle_image')  # Legacy single image
+            plate_images=plate_images,
+            vehicle_images=vehicle_images,
+            location_id=location_id,
+            camera_name=camera_name,
+            reg_code=reg_code,
         )
 
         return jsonify({
             'success': True,
             'plate': event['plate'],
+            'confidence': event.get('confidence'),
             'access_granted': result['access_granted'],
             'log_id': result['log_id']
         })

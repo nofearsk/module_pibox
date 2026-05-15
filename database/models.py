@@ -841,6 +841,138 @@ class AnprCameraModel:
         cameras = AnprCameraModel.get_health_status(timeout_minutes)
         return sum(1 for c in cameras if c['status'] == 'offline')
 
+    @staticmethod
+    def get_snapshot_enabled():
+        """Get all cameras with snapshot polling enabled and a URL set."""
+        db = get_db()
+        return db.execute(
+            "SELECT * FROM anpr_cameras "
+            "WHERE active = 1 AND snapshot_enabled = 1 "
+            "AND snapshot_url IS NOT NULL AND snapshot_url != ''"
+        ).fetchall()
+
+    @staticmethod
+    def get_feed_enabled(mode=None):
+        """
+        Cameras that want a live connection opened (feed_enabled=1).
+        For mode='snapshot' also requires snapshot_url; for SDK modes
+        requires sdk_host.
+        """
+        db = get_db()
+        query = "SELECT * FROM anpr_cameras WHERE active = 1 AND feed_enabled = 1"
+        params = []
+        if mode:
+            query += " AND feed_mode = ?"
+            params.append(mode)
+        return db.execute(query, params).fetchall()
+
+    @staticmethod
+    def update_feed_config(camera_id, feed_mode=None, feed_enabled=None,
+                           snapshot_url=None, poll_interval_seconds=None,
+                           min_confidence=None,
+                           sdk_host=None, sdk_port=None,
+                           sdk_username=None, sdk_password=None,
+                           rtsp_url=None, detect_region=None,
+                           min_read_score=None, min_ratio_score=None,
+                           max_first_detect_seconds=None,
+                           max_last_detect_seconds=None,
+                           max_valid_detect_seconds=None):
+        """Update any subset of feed-mode fields on a camera."""
+        db = get_db()
+        updates, values = [], []
+
+        def _set(col, val):
+            updates.append(f'{col} = ?')
+            values.append(val)
+
+        if feed_mode is not None:
+            if feed_mode not in ('http_push', 'snapshot', 'dahua_sdk', 'hikvision_sdk', 'rtsp'):
+                raise ValueError(f'invalid feed_mode: {feed_mode}')
+            _set('feed_mode', feed_mode)
+        if feed_enabled is not None:
+            _set('feed_enabled', 1 if feed_enabled else 0)
+            # Keep snapshot_enabled in sync so the legacy column stays meaningful
+            _set('snapshot_enabled', 1 if feed_enabled else 0)
+        if snapshot_url is not None:
+            _set('snapshot_url', snapshot_url or None)
+        if poll_interval_seconds is not None:
+            _set('poll_interval_seconds', max(1, int(poll_interval_seconds)))
+        if min_confidence is not None:
+            _set('min_confidence', float(min_confidence))
+        if sdk_host is not None:
+            _set('sdk_host', sdk_host or None)
+        if sdk_port is not None:
+            _set('sdk_port', int(sdk_port) if sdk_port else None)
+        if sdk_username is not None:
+            _set('sdk_username', sdk_username or None)
+        if sdk_password is not None:
+            _set('sdk_password', sdk_password or None)
+        if rtsp_url is not None:
+            _set('rtsp_url', rtsp_url or None)
+        if detect_region is not None:
+            _set('detect_region', detect_region or None)
+        if min_read_score is not None:
+            _set('min_read_score', float(min_read_score))
+        if min_ratio_score is not None:
+            _set('min_ratio_score', float(min_ratio_score))
+        if max_first_detect_seconds is not None:
+            _set('max_first_detect_seconds', int(max_first_detect_seconds))
+        if max_last_detect_seconds is not None:
+            _set('max_last_detect_seconds', int(max_last_detect_seconds))
+        if max_valid_detect_seconds is not None:
+            _set('max_valid_detect_seconds', int(max_valid_detect_seconds))
+
+        if not updates:
+            return
+        values.append(camera_id)
+        db.execute(f'UPDATE anpr_cameras SET {", ".join(updates)} WHERE id = ?', values)
+        db.commit()
+
+    @staticmethod
+    def update_snapshot_config(camera_id, snapshot_url=None, snapshot_enabled=None,
+                               poll_interval_seconds=None, min_confidence=None):
+        """Update snapshot polling config for a camera."""
+        db = get_db()
+        updates, values = [], []
+        if snapshot_url is not None:
+            updates.append('snapshot_url = ?')
+            values.append(snapshot_url or None)
+        if snapshot_enabled is not None:
+            updates.append('snapshot_enabled = ?')
+            values.append(1 if snapshot_enabled else 0)
+        if poll_interval_seconds is not None:
+            updates.append('poll_interval_seconds = ?')
+            values.append(max(1, int(poll_interval_seconds)))
+        if min_confidence is not None:
+            updates.append('min_confidence = ?')
+            values.append(float(min_confidence))
+        if not updates:
+            return
+        values.append(camera_id)
+        db.execute(f'UPDATE anpr_cameras SET {", ".join(updates)} WHERE id = ?', values)
+        db.commit()
+
+    @staticmethod
+    def record_capture(camera_id, plate):
+        """Record a successful plate capture from snapshot polling."""
+        db = get_db()
+        db.execute(
+            'UPDATE anpr_cameras SET last_captured_plate = ?, last_capture_at = ?, '
+            'last_poll_error = NULL WHERE id = ?',
+            (plate, datetime.now().isoformat(), camera_id)
+        )
+        db.commit()
+
+    @staticmethod
+    def record_poll_error(camera_id, error):
+        """Record the most recent snapshot poll error (rolling)."""
+        db = get_db()
+        db.execute(
+            'UPDATE anpr_cameras SET last_poll_error = ? WHERE id = ?',
+            (str(error)[:500], camera_id)
+        )
+        db.commit()
+
 
 class AuditLogModel:
     """Data access for audit_logs table"""

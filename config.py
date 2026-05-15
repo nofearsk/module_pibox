@@ -3,8 +3,41 @@ PiBox Configuration Management
 """
 import os
 
-# Base paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_env_file():
+    """
+    Load KEY=VALUE pairs from a .env file next to this module.
+
+    Lookup order:
+    1. $PIBOX_ENV_FILE if set
+    2. <module>/.env
+
+    Existing process env vars take precedence over the file, so systemd
+    `Environment=` directives still win.
+    """
+    path = os.environ.get('PIBOX_ENV_FILE') or os.path.join(BASE_DIR, '.env')
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, value = line.partition('=')
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
+
+
+_load_env_file()
+
+# Base paths
 DATA_DIR = os.environ.get('PIBOX_DATA_DIR', '/var/pibox')
 DB_PATH = os.path.join(DATA_DIR, 'pibox.db')
 IMAGES_DIR = os.path.join(DATA_DIR, 'images')
@@ -55,6 +88,11 @@ DEFAULTS = {
     'web_relay_username': 'admin',    # Web auth username
     'web_relay_password': '12345678', # Web auth password
     'web_relay_pulse_time': '1.0',    # Pulse time in seconds (configured on board)
+
+    # Local ANPR (fast-plate-ocr + open-image-models, CPU-only)
+    'lpr_enabled': 'false',                                       # Master switch
+    'lpr_detector_model': 'yolo-v9-t-384-license-plate-end2end',  # open-image-models hub id
+    'lpr_ocr_model': 'cct-xs-v1-global-model',                    # fast-plate-ocr hub id
 }
 
 

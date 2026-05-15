@@ -170,6 +170,36 @@ def init_db(conn=None):
     except:
         pass  # Column already exists
 
+    # Migration: snapshot (pull) mode — poll an HTTP/RTSP snapshot URL and run ANPR locally
+    for ddl in (
+        'ALTER TABLE anpr_cameras ADD COLUMN snapshot_url TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN snapshot_enabled INTEGER DEFAULT 0',
+        'ALTER TABLE anpr_cameras ADD COLUMN poll_interval_seconds INTEGER DEFAULT 2',
+        'ALTER TABLE anpr_cameras ADD COLUMN min_confidence REAL DEFAULT 0.75',
+        'ALTER TABLE anpr_cameras ADD COLUMN last_captured_plate TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN last_capture_at TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN last_poll_error TEXT',
+        # Multi-backend ANPR: 'http_push' | 'snapshot' | 'dahua_sdk' | 'hikvision_sdk'
+        "ALTER TABLE anpr_cameras ADD COLUMN feed_mode TEXT DEFAULT 'http_push'",
+        'ALTER TABLE anpr_cameras ADD COLUMN sdk_host TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN sdk_port INTEGER',
+        'ALTER TABLE anpr_cameras ADD COLUMN sdk_username TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN sdk_password TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN feed_enabled INTEGER DEFAULT 0',
+        # RTSP mode — pull frames from an RTSP stream and run local OCR
+        'ALTER TABLE anpr_cameras ADD COLUMN rtsp_url TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN detect_region TEXT',
+        'ALTER TABLE anpr_cameras ADD COLUMN min_read_score REAL DEFAULT 0.8',
+        'ALTER TABLE anpr_cameras ADD COLUMN min_ratio_score REAL DEFAULT 0.85',
+        'ALTER TABLE anpr_cameras ADD COLUMN max_first_detect_seconds INTEGER DEFAULT 3',
+        'ALTER TABLE anpr_cameras ADD COLUMN max_last_detect_seconds INTEGER DEFAULT 5',
+        'ALTER TABLE anpr_cameras ADD COLUMN max_valid_detect_seconds INTEGER DEFAULT 10',
+    ):
+        try:
+            cursor.execute(ddl)
+        except:
+            pass
+
     # Upload queue table (for offline resilience)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS upload_queue (

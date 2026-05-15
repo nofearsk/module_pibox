@@ -3,9 +3,15 @@ Access Control Service
 Handles access decisions based on vehicle lookup
 """
 import logging
+import threading
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+# Default same-plate cooldown when the camera has no per-camera config
+# (or we can't look it up, e.g. unknown reg_code).
+DEFAULT_COOLDOWN_SECONDS = 30
 
 
 class AccessService:
@@ -16,7 +22,41 @@ class AccessService:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._last_plate = {}   # key -> (plate, datetime)
+            cls._instance._dedupe_lock = threading.Lock()
         return cls._instance
+
+    def _dedupe_key(self, reg_code, camera_ip):
+        """Stable key per camera. reg_code first, fall back to camera_ip."""
+        if reg_code:
+            return f'reg:{reg_code}'
+        if camera_ip:
+            return f'ip:{camera_ip}'
+        return 'global'
+
+    def _is_duplicate(self, plate, reg_code, camera_ip):
+        """Sliding-window dedupe: same plate from same camera within
+        `max_valid_detect_seconds` is treated as one event. The window
+        slides forward on every repeat sighting, so a car sitting at the
+        gate stays muted until it actually leaves."""
+        from database.models import AnprCameraModel
+        key = self._dedupe_key(reg_code, camera_ip)
+        cooldown = DEFAULT_COOLDOWN_SECONDS
+        if reg_code:
+            try:
+                cam = AnprCameraModel.get_by_reg_code(reg_code)
+                if cam and cam['max_valid_detect_seconds']:
+                    cooldown = int(cam['max_valid_detect_seconds'])
+            except Exception:
+                pass
+        now = datetime.now()
+        with self._dedupe_lock:
+            prev = self._last_plate.get(key)
+            if prev and prev[0] == plate and (now - prev[1]).total_seconds() < cooldown:
+                self._last_plate[key] = (plate, now)  # slide window
+                return True, cooldown
+            self._last_plate[key] = (plate, now)
+        return False, cooldown
 
     def process_vehicle(self, plate, camera_ip=None, plate_images=None, vehicle_images=None,
                         location_id=None, camera_name=None, reg_code=None,
@@ -65,6 +105,16 @@ class AccessService:
         normalized_plate = anpr_service.normalize_plate(plate)
         if not normalized_plate:
             logger.warning("Empty plate number received")
+            return result
+
+        # Dedupe — same plate from same camera within the cooldown window
+        # is treated as one event. Covers HTTP-push paths (Hikvision/Dahua)
+        # which don't have their own per-backend dedupe.
+        is_dupe, cooldown = self._is_duplicate(normalized_plate, reg_code, camera_ip)
+        if is_dupe:
+            logger.info("Skipping duplicate %s from %s (cooldown %ds)",
+                        normalized_plate, reg_code or camera_ip, cooldown)
+            result['vehicle_type'] = 'duplicate'
             return result
 
         logger.info(f"Processing vehicle: {normalized_plate} from camera {camera_ip}")

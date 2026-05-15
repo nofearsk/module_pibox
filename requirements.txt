@@ -10,5 +10,12 @@ websockets>=10.0
 # HTTP requests for Odoo API
 requests>=2.28.0
 
+# Local ANPR (CPU-only, ONNX)
+# Detector + OCR for license plate snapshot mode
+fast-plate-ocr>=1.0
+open-image-models[onnx]>=0.1
+opencv-python-headless>=4.8
+numpy
+
 # GPIO control (Raspberry Pi only)
 # lgpio  # Install via apt: sudo apt install python3-lgpio

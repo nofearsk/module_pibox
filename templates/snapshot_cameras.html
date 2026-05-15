@@ -1,0 +1,737 @@
+{% extends "base.html" %}
+
+{% block title %}ANPR Cameras - PiBox{% endblock %}
+
+{% block content %}
+<style>
+.panel-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .panel-grid { grid-template-columns: 1fr; }
+}
+.panel-form { display: flex; flex-direction: column; gap: 0.6rem; }
+.pibox-fs {
+    border: 1px solid #2c3a4d;
+    border-radius: 5px;
+    padding: 0.6rem 0.8rem 0.8rem;
+    margin: 0;
+}
+.pibox-fs legend {
+    padding: 0 0.4rem;
+    font-size: 0.85em;
+    color: #9aaabd;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.pibox-fs label { display: block; margin-top: 0.3rem; }
+.pibox-fs label:first-child { margin-top: 0; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; }
+.btn-small { padding: 0.25rem 0.6rem; font-size: 0.9em; }
+.panel-preview { display: flex; flex-direction: column; gap: 0.4rem; }
+.preview-label { font-size: 0.9em; }
+.preview-wrap {
+    position: relative;
+    background: #0f1620;
+    border: 1px solid #2c3a4d;
+    border-radius: 4px;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    min-height: 160px;
+}
+.preview-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+.preview-img:not([src]), .preview-img[src=""] { visibility: hidden; }
+.preview-status {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 0.2rem 0.5rem;
+    background: rgba(0,0,0,0.55);
+    font-size: 0.8em;
+    color: #cdd6df;
+}
+</style>
+<div class="page">
+    <div class="page-header">
+        <h1>ANPR Cameras</h1>
+        <p class="muted">
+            Pick a feed mode per camera. <strong>HTTP Push</strong> = camera
+            posts events to PiBox. <strong>Snapshot</strong> = PiBox pulls a
+            snapshot URL and runs local ANPR. <strong>Dahua/Hikvision SDK</strong>
+            = PiBox connects to the camera over the vendor SDK (stubs, coming soon).
+        </p>
+    </div>
+
+    <!-- Local ANPR engine (needed by snapshot mode only) -->
+    <div class="card">
+        <div class="card-header section-header">
+            <h2>Local ANPR Engine <span class="muted">(needed for Snapshot mode)</span></h2>
+            <span class="badge">{{ 'ON' if lpr_enabled else 'OFF' }}</span>
+        </div>
+        <div class="card-body">
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem; margin-bottom:0.75rem;">
+                <div><strong>Loaded:</strong> {{ 'YES' if lpr_status.loaded else 'NO' }}</div>
+                <div><strong>Manager running:</strong> {{ 'YES' if manager_status.running else 'NO' }}</div>
+                <div><strong>Detector:</strong> <code>{{ lpr_status.detector_model or '—' }}</code></div>
+                <div><strong>OCR:</strong> <code>{{ lpr_status.ocr_model or '—' }}</code></div>
+                {% for mode, status in manager_status.backends.items() %}
+                <div>
+                    <strong>{{ mode }}:</strong>
+                    {{ status.active|length }} active
+                    {% if status.implemented == False %}<span class="muted">(stub)</span>{% endif %}
+                </div>
+                {% endfor %}
+                <div style="grid-column: 1 / -1;"><strong>Error:</strong> <span style="color:#d33">{{ lpr_status.error or '—' }}</span></div>
+            </div>
+            <button class="btn btn-on" onclick="enableLpr(true)">Enable local ANPR</button>
+            <button class="btn btn-off" onclick="enableLpr(false)">Disable</button>
+        </div>
+    </div>
+
+    <!-- Cameras -->
+    <div class="card">
+        <div class="card-header section-header">
+            <h2>Cameras</h2>
+            <span class="badge">{{ cameras|length }}</span>
+        </div>
+        <div class="card-body">
+            {% if not cameras %}
+                <p class="muted">No ANPR cameras synced yet. Sync from Odoo first.</p>
+            {% endif %}
+
+            {% for cam in cameras %}
+            <div class="camera-mapping-card" data-camera-id="{{ cam.id }}" style="margin-bottom:1rem;">
+                <div class="camera-card-header">
+                    <div class="camera-card-info">
+                        <h3>{{ cam.name or 'Unnamed Camera' }}</h3>
+                        <div class="muted">
+                            reg_code: <code>{{ cam.reg_code or '—' }}</code> ·
+                            location: {{ cam.location_name or '—' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                    <label style="grid-column: 1 / -1;">Feed mode
+                        <select class="inp-mode" onchange="updateMode(this)">
+                            {% set mode = cam.feed_mode or 'http_push' %}
+                            <option value="http_push"    {% if mode=='http_push' %}selected{% endif %}>HTTP Push (camera → PiBox)</option>
+                            <option value="snapshot"     {% if mode=='snapshot' %}selected{% endif %}>Snapshot (local ANPR)</option>
+                            <option value="rtsp"         {% if mode=='rtsp' %}selected{% endif %}>RTSP (continuous, local ANPR)</option>
+                            <option value="dahua_sdk"    {% if mode=='dahua_sdk' %}selected{% endif %}>Dahua SDK (stub)</option>
+                            <option value="hikvision_sdk"{% if mode=='hikvision_sdk' %}selected{% endif %}>Hikvision SDK (stub)</option>
+                        </select>
+                    </label>
+
+                    <!-- HTTP push panel (no input) -->
+                    <div class="mode-panel mode-http_push" style="grid-column: 1 / -1;">
+                        <p class="muted">
+                            Configure the camera to POST ANPR events to one of:<br>
+                            <strong>Hikvision:</strong>
+                            <code>http://&lt;this-pibox&gt;:8080/hikfeed/{{ cam.reg_code or 'REG_CODE' }}/PASSWORD</code><br>
+                            <strong>Dahua ITC:</strong>
+                            <code>http://&lt;this-pibox&gt;:8080/dahuafeed/{{ cam.reg_code or 'REG_CODE' }}/PASSWORD</code>
+                        </p>
+                    </div>
+
+                    <!-- Snapshot panel -->
+                    <div class="mode-panel mode-snapshot" style="grid-column: 1 / -1; display:none;">
+                        <div class="panel-grid">
+                            <div class="panel-form">
+                                <fieldset class="pibox-fs">
+                                    <legend>Connection</legend>
+                                    <label>Snapshot URL
+                                        <input type="text" class="inp-url" style="width:100%"
+                                               placeholder="http://user:pass@1.2.3.4/cgi-bin/snapshot.cgi?channel=1"
+                                               value="{{ cam.snapshot_url or '' }}" />
+                                    </label>
+                                </fieldset>
+                                <fieldset class="pibox-fs">
+                                    <legend>Detect region</legend>
+                                    <label>x1 y1 x2 y2
+                                        <input type="text" class="inp-snap-region"
+                                               placeholder="e.g. 100 400 800 600 (leave blank = whole frame)"
+                                               value="{{ cam.detect_region or '' }}" />
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="openCropperSnap({{ cam.id }})"
+                                            style="margin-top:0.4rem;">
+                                        Capture frame &amp; draw region
+                                    </button>
+                                </fieldset>
+                                <fieldset class="pibox-fs">
+                                    <legend>Tuning</legend>
+                                    <div class="grid-3">
+                                        <label>Poll interval (s)
+                                            <input type="number" class="inp-interval" min="1" value="{{ cam.poll_interval_seconds or 2 }}" />
+                                        </label>
+                                        <label>Min read score
+                                            <input type="number" class="inp-snap-read" min="0" max="1" step="0.05"
+                                                   value="{{ cam.min_read_score or 0.4 }}" />
+                                        </label>
+                                        <label>Valid detect (s)
+                                            <input type="number" class="inp-snap-valid" min="1"
+                                                   value="{{ cam.max_valid_detect_seconds or 30 }}" />
+                                        </label>
+                                    </div>
+                                    <input type="hidden" class="inp-conf" value="0.25" />
+                                </fieldset>
+                            </div>
+                            <div class="panel-preview">
+                                <div class="preview-label">Live preview <span class="muted">(refreshes every 5s)</span></div>
+                                <div class="preview-wrap">
+                                    <img class="preview-img" alt="preview" />
+                                    <div class="preview-status muted">—</div>
+                                </div>
+                                <button type="button" class="btn btn-small preview-refresh">Refresh now</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RTSP panel -->
+                    <div class="mode-panel mode-rtsp" style="grid-column: 1 / -1; display:none;">
+                        <div class="panel-grid">
+                            <div class="panel-form">
+                                <fieldset class="pibox-fs">
+                                    <legend>Connection</legend>
+                                    <label>RTSP URL
+                                        <input type="text" class="inp-rtsp-url" style="width:100%"
+                                               placeholder="rtsp://user:pass@1.2.3.4:554/Streaming/Channels/101"
+                                               value="{{ cam.rtsp_url or '' }}" />
+                                    </label>
+                                </fieldset>
+                                <fieldset class="pibox-fs">
+                                    <legend>Detect region</legend>
+                                    <label>x1 y1 x2 y2
+                                        <input type="text" class="inp-region"
+                                               placeholder="e.g. 100 400 800 600"
+                                               value="{{ cam.detect_region or '' }}" />
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="openCropper({{ cam.id }})"
+                                            style="margin-top:0.4rem;">
+                                        Capture frame &amp; draw region
+                                    </button>
+                                </fieldset>
+                                <fieldset class="pibox-fs">
+                                    <legend>Scoring</legend>
+                                    <div class="grid-2">
+                                        <label>Min read score
+                                            <input type="number" class="inp-read" min="0" max="1" step="0.05"
+                                                   value="{{ cam.min_read_score or 0.8 }}" />
+                                        </label>
+                                        <label>Min ratio score
+                                            <input type="number" class="inp-ratio" min="0" max="1" step="0.05"
+                                                   value="{{ cam.min_ratio_score or 0.85 }}" />
+                                        </label>
+                                    </div>
+                                </fieldset>
+                                <fieldset class="pibox-fs">
+                                    <legend>Timing windows (seconds)</legend>
+                                    <div class="grid-3">
+                                        <label>First detect
+                                            <input type="number" class="inp-first" min="1" value="{{ cam.max_first_detect_seconds or 3 }}" />
+                                        </label>
+                                        <label>Last detect
+                                            <input type="number" class="inp-last" min="1" value="{{ cam.max_last_detect_seconds or 5 }}" />
+                                        </label>
+                                        <label>Valid detect
+                                            <input type="number" class="inp-valid" min="1" value="{{ cam.max_valid_detect_seconds or 10 }}" />
+                                        </label>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div class="panel-preview">
+                                <div class="preview-label">Live preview <span class="muted">(refreshes every 5s)</span></div>
+                                <div class="preview-wrap">
+                                    <img class="preview-img" alt="preview" />
+                                    <div class="preview-status muted">—</div>
+                                </div>
+                                <button type="button" class="btn btn-small preview-refresh">Refresh now</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SDK panel (shared by Dahua and Hikvision) -->
+                    <div class="mode-panel mode-sdk" style="grid-column: 1 / -1; display:none;">
+                        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:0.75rem;">
+                            <label>SDK Host / IP
+                                <input type="text" class="inp-host" value="{{ cam.sdk_host or '' }}" />
+                            </label>
+                            <label>Port
+                                <input type="number" class="inp-port" value="{{ cam.sdk_port or 37777 }}" />
+                            </label>
+                            <label>Username
+                                <input type="text" class="inp-user" value="{{ cam.sdk_username or 'admin' }}" />
+                            </label>
+                            <label>Password
+                                <input type="password" class="inp-pass" value="{{ cam.sdk_password or '' }}" />
+                            </label>
+                        </div>
+                        <p class="muted" style="margin-top:0.5rem;">
+                            SDK backends are stubs — config is saved but events won't arrive
+                            until the SDK is installed and the backend is implemented.
+                        </p>
+                    </div>
+
+                    <label style="grid-column: 1 / -1;">
+                        <input type="checkbox" class="inp-enabled" {% if cam.feed_enabled %}checked{% endif %} />
+                        Enable this feed
+                    </label>
+
+                    <div class="muted" style="grid-column: 1 / -1;">
+                        last capture:
+                        {% if cam.last_captured_plate %}
+                            <code>{{ cam.last_captured_plate }}</code> at {{ cam.last_capture_at }}
+                        {% else %}—{% endif %}
+                        {% if cam.last_poll_error %}
+                            <div style="color:#d33">err: {{ cam.last_poll_error }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:0.5rem; padding:0.75rem;">
+                    <button class="btn" onclick="saveCam({{ cam.id }})">Save</button>
+                    <button class="btn btn-pulse mode-snapshot-only" onclick="testSnapshot({{ cam.id }})"
+                            style="display:none;">Test snapshot</button>
+                </div>
+
+                <div class="test-result" style="padding:0.5rem; display:none;"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Cropper modal for detect_region -->
+<div id="cropperModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; padding:1rem; border-radius:6px; max-width:95vw; max-height:95vh; overflow:auto;">
+        <h3 style="margin-top:0;">Draw detect region</h3>
+        <p class="muted">
+            Click &amp; drag on the image to draw the rectangle that the OCR should look at.
+        </p>
+        <div id="cropperStatus" class="muted" style="margin-bottom:0.5rem;">Loading frame…</div>
+        <div id="cropperWrap" style="position:relative; display:inline-block; max-width:100%;">
+            <img id="cropperImg" alt="frame" style="display:block; max-width:90vw; user-select:none; -webkit-user-drag:none;" />
+            <div id="cropperBox" style="position:absolute; border:2px solid #0a0; background:rgba(0,200,0,0.15); pointer-events:none; display:none;"></div>
+        </div>
+        <div style="margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <span id="cropperCoords" class="muted"></span>
+            <span style="flex:1;"></span>
+            <button class="btn" onclick="refreshCropperFrame()">Re-capture frame</button>
+            <button class="btn btn-on" onclick="saveCropperRegion()">Save region</button>
+            <button class="btn btn-off" onclick="closeCropper()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Show the right panel based on the mode dropdown
+function applyMode(card) {
+    const mode = card.querySelector('.inp-mode').value;
+    card.querySelectorAll('.mode-panel').forEach(p => p.style.display = 'none');
+    const snapOnly = card.querySelector('.mode-snapshot-only');
+    if (mode === 'http_push') {
+        card.querySelector('.mode-http_push').style.display = '';
+    } else if (mode === 'snapshot') {
+        card.querySelector('.mode-snapshot').style.display = '';
+    } else if (mode === 'rtsp') {
+        card.querySelector('.mode-rtsp').style.display = '';
+    } else if (mode === 'dahua_sdk' || mode === 'hikvision_sdk') {
+        card.querySelector('.mode-sdk').style.display = '';
+    }
+    if (snapOnly) snapOnly.style.display = (mode === 'snapshot') ? '' : 'none';
+    syncPreview(card);
+}
+function updateMode(sel) { applyMode(sel.closest('.camera-mapping-card')); }
+
+// ---------- Live preview (5s refresh) ----------
+const PREVIEW_INTERVAL_MS = 5000;
+const previewTimers = new Map();  // cameraId -> intervalId
+
+function activePreviewPanel(card) {
+    // Returns the visible panel that owns a preview (rtsp or snapshot), or null.
+    const rtsp = card.querySelector('.mode-rtsp');
+    const snap = card.querySelector('.mode-snapshot');
+    if (rtsp && rtsp.style.display !== 'none') return {panel: rtsp, mode: 'rtsp'};
+    if (snap && snap.style.display !== 'none') return {panel: snap, mode: 'snapshot'};
+    return null;
+}
+
+async function fetchPreview(card) {
+    const camId = card.dataset.cameraId;
+    const active = activePreviewPanel(card);
+    if (!active) return;
+    const img = active.panel.querySelector('.preview-img');
+    const status = active.panel.querySelector('.preview-status');
+
+    // Cache-bust + carry the current URL field, so users can preview before saving.
+    let url = `/api/anpr-cameras/${camId}/preview?_=${Date.now()}`;
+    if (active.mode === 'rtsp') {
+        const u = active.panel.querySelector('.inp-rtsp-url')?.value.trim();
+        if (u) url += '&rtsp_url=' + encodeURIComponent(u);
+    } else {
+        const u = active.panel.querySelector('.inp-url')?.value.trim();
+        if (u) url += '&snapshot_url=' + encodeURIComponent(u);
+    }
+
+    status.textContent = 'Loading…';
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+            let err = 'HTTP ' + resp.status;
+            try { err = (await resp.json()).error || err; } catch (e) {}
+            status.textContent = 'Error: ' + err;
+            return;
+        }
+        const blob = await resp.blob();
+        const obj = URL.createObjectURL(blob);
+        const prev = img.src;
+        img.src = obj;
+        if (prev && prev.startsWith('blob:')) {
+            // Free the old blob shortly after the new one is in
+            setTimeout(() => URL.revokeObjectURL(prev), 1000);
+        }
+        const w = resp.headers.get('X-Frame-Width');
+        const h = resp.headers.get('X-Frame-Height');
+        const dims = (w && h) ? ` (${w}×${h})` : '';
+        status.textContent = new Date().toLocaleTimeString() + dims;
+    } catch (e) {
+        status.textContent = 'Error: ' + e;
+    }
+}
+
+function syncPreview(card) {
+    const camId = card.dataset.cameraId;
+    const active = activePreviewPanel(card);
+    const existing = previewTimers.get(camId);
+
+    if (!active) {
+        if (existing) { clearInterval(existing); previewTimers.delete(camId); }
+        return;
+    }
+    if (existing) return;  // already running
+
+    // Kick off immediately, then on interval
+    fetchPreview(card);
+    const id = setInterval(() => fetchPreview(card), PREVIEW_INTERVAL_MS);
+    previewTimers.set(camId, id);
+}
+
+// Manual "Refresh now" buttons
+document.querySelectorAll('.preview-refresh').forEach(btn => {
+    btn.addEventListener('click', e => {
+        fetchPreview(e.target.closest('.camera-mapping-card'));
+    });
+});
+
+// Re-sync previews when URL fields change, so editing the URL re-targets the preview
+document.querySelectorAll('.inp-rtsp-url, .inp-url').forEach(el => {
+    el.addEventListener('change', e => {
+        fetchPreview(e.target.closest('.camera-mapping-card'));
+    });
+});
+
+// Pause all previews when the tab is hidden, resume when visible — saves bandwidth
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        previewTimers.forEach((id) => clearInterval(id));
+        previewTimers.clear();
+    } else {
+        document.querySelectorAll('.camera-mapping-card').forEach(syncPreview);
+    }
+});
+
+async function api(url, opts) {
+    const r = await fetch(url, opts);
+    return r.json();
+}
+
+async function enableLpr(on) {
+    const res = await api('/api/lpr/enable', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: on})
+    });
+    if (res.success) location.reload();
+    else alert('Failed: ' + (res.error || 'unknown'));
+}
+
+function _vals(camId) {
+    const card = document.querySelector(`[data-camera-id="${camId}"]`);
+    const mode = card.querySelector('.inp-mode').value;
+    const payload = {
+        feed_mode: mode,
+        feed_enabled: card.querySelector('.inp-enabled').checked,
+    };
+    if (mode === 'snapshot') {
+        payload.snapshot_url = card.querySelector('.inp-url').value.trim();
+        payload.poll_interval_seconds = parseInt(card.querySelector('.inp-interval').value, 10);
+        payload.min_confidence = parseFloat(card.querySelector('.inp-conf').value);
+        payload.detect_region = (card.querySelector('.inp-snap-region')?.value || '').trim();
+        const mr = parseFloat(card.querySelector('.inp-snap-read')?.value);
+        if (!isNaN(mr)) payload.min_read_score = mr;
+        const mv = parseInt(card.querySelector('.inp-snap-valid')?.value, 10);
+        if (!isNaN(mv)) payload.max_valid_detect_seconds = mv;
+    } else if (mode === 'rtsp') {
+        payload.rtsp_url = card.querySelector('.inp-rtsp-url').value.trim();
+        payload.detect_region = card.querySelector('.inp-region').value.trim();
+        payload.min_read_score = parseFloat(card.querySelector('.inp-read').value);
+        payload.min_ratio_score = parseFloat(card.querySelector('.inp-ratio').value);
+        payload.max_first_detect_seconds = parseInt(card.querySelector('.inp-first').value, 10);
+        payload.max_last_detect_seconds = parseInt(card.querySelector('.inp-last').value, 10);
+        payload.max_valid_detect_seconds = parseInt(card.querySelector('.inp-valid').value, 10);
+    } else if (mode === 'dahua_sdk' || mode === 'hikvision_sdk') {
+        payload.sdk_host = card.querySelector('.inp-host').value.trim();
+        payload.sdk_port = parseInt(card.querySelector('.inp-port').value, 10) || null;
+        payload.sdk_username = card.querySelector('.inp-user').value.trim();
+        payload.sdk_password = card.querySelector('.inp-pass').value;
+    }
+    return {card, payload};
+}
+
+async function saveCam(camId) {
+    const {card, payload} = _vals(camId);
+    const res = await api(`/api/anpr-cameras/${camId}/feed`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const out = card.querySelector('.test-result');
+    out.style.display = 'block';
+    out.textContent = res.success ? 'Saved.' : ('Save failed: ' + (res.error || 'unknown'));
+}
+
+async function testSnapshot(camId) {
+    const {card, payload} = _vals(camId);
+    const out = card.querySelector('.test-result');
+    out.style.display = 'block';
+    out.textContent = 'Fetching snapshot...';
+    try {
+        const res = await api(`/api/snapshot-cameras/${camId}/test`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({snapshot_url: payload.snapshot_url})
+        });
+        if (!res.success) {
+            out.innerHTML = '<span style="color:#d33">Error: ' + (res.error || 'unknown') + '</span>';
+            return;
+        }
+        const plateTxt = res.plate
+            ? `<strong>Plate:</strong> <code>${res.plate}</code> (conf ${res.confidence.toFixed(2)})`
+            : '<em>No plate detected.</em>';
+        out.innerHTML = `
+            <div>${plateTxt}</div>
+            <div class="muted">image ${res.image_size} bytes</div>
+            ${res.preview ? `<img src="${res.preview}" style="max-width:320px; margin-top:0.5rem; border:1px solid #ccc;" />` : ''}
+        `;
+    } catch (e) {
+        out.innerHTML = '<span style="color:#d33">Error: ' + e + '</span>';
+    }
+}
+
+// ---------- Detect-region cropper ----------
+const cropper = {
+    camId: null,
+    mode: 'rtsp',     // 'rtsp' or 'snapshot' — picks which input field to seed/save
+    naturalW: 0,
+    naturalH: 0,
+    scale: 1,         // displayed px per natural px
+    drawing: false,
+    startX: 0, startY: 0,   // displayed coords inside the image
+    rect: null,             // {x1,y1,x2,y2} in NATURAL pixels
+};
+
+function _regionField(card) {
+    return cropper.mode === 'snapshot'
+        ? card.querySelector('.inp-snap-region')
+        : card.querySelector('.inp-region');
+}
+
+function openCropper(camId, mode = 'rtsp') {
+    cropper.camId = camId;
+    cropper.mode = mode;
+    cropper.rect = null;
+    document.getElementById('cropperBox').style.display = 'none';
+    document.getElementById('cropperCoords').textContent = '';
+    document.getElementById('cropperModal').style.display = 'flex';
+
+    // Seed from existing detect_region (if any) so we can show it
+    const card = document.querySelector(`[data-camera-id="${camId}"]`);
+    const regionStr = (_regionField(card)?.value || '').trim();
+    if (regionStr) {
+        const parts = regionStr.split(/[\s,]+/).map(Number);
+        if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
+            cropper.rect = {x1: parts[0], y1: parts[1], x2: parts[2], y2: parts[3]};
+        }
+    }
+    refreshCropperFrame();
+}
+
+function openCropperSnap(camId) { openCropper(camId, 'snapshot'); }
+
+function closeCropper() {
+    document.getElementById('cropperModal').style.display = 'none';
+    cropper.camId = null;
+}
+
+async function refreshCropperFrame() {
+    const status = document.getElementById('cropperStatus');
+    const img = document.getElementById('cropperImg');
+    const card = document.querySelector(`[data-camera-id="${cropper.camId}"]`);
+
+    let url, fetchOpts;
+    if (cropper.mode === 'snapshot') {
+        const snapUrl = card.querySelector('.inp-url')?.value.trim() || '';
+        url = `/api/anpr-cameras/${cropper.camId}/preview?_=${Date.now()}`
+              + (snapUrl ? '&snapshot_url=' + encodeURIComponent(snapUrl) : '');
+        fetchOpts = {method: 'GET'};
+        status.textContent = 'Fetching frame from snapshot URL…';
+    } else {
+        const rtspUrl = card.querySelector('.inp-rtsp-url')?.value.trim() || '';
+        url = `/api/anpr-cameras/${cropper.camId}/snap`;
+        fetchOpts = {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rtsp_url: rtspUrl}),
+        };
+        status.textContent = 'Fetching frame from RTSP… (may take 5–15 s)';
+    }
+    try {
+        const resp = await fetch(url, fetchOpts);
+        if (!resp.ok) {
+            let err = 'unknown';
+            try { err = (await resp.json()).error || err; } catch (e) {}
+            status.innerHTML = `<span style="color:#d33">Failed: ${err}</span>`;
+            return;
+        }
+        cropper.naturalW = parseInt(resp.headers.get('X-Frame-Width') || '0', 10);
+        cropper.naturalH = parseInt(resp.headers.get('X-Frame-Height') || '0', 10);
+        const blob = await resp.blob();
+        img.src = URL.createObjectURL(blob);
+        img.onload = () => {
+            if (!cropper.naturalW) cropper.naturalW = img.naturalWidth;
+            if (!cropper.naturalH) cropper.naturalH = img.naturalHeight;
+            cropper.scale = img.clientWidth / cropper.naturalW;
+            status.textContent = `Frame ${cropper.naturalW}×${cropper.naturalH}. Drag to draw.`;
+            if (cropper.rect) drawCropperBox();
+        };
+    } catch (e) {
+        status.innerHTML = `<span style="color:#d33">Error: ${e}</span>`;
+    }
+}
+
+function drawCropperBox() {
+    const box = document.getElementById('cropperBox');
+    if (!cropper.rect) { box.style.display = 'none'; return; }
+    const s = cropper.scale;
+    const left = Math.min(cropper.rect.x1, cropper.rect.x2) * s;
+    const top = Math.min(cropper.rect.y1, cropper.rect.y2) * s;
+    const w = Math.abs(cropper.rect.x2 - cropper.rect.x1) * s;
+    const h = Math.abs(cropper.rect.y2 - cropper.rect.y1) * s;
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+    box.style.width = w + 'px';
+    box.style.height = h + 'px';
+    box.style.display = 'block';
+
+    const r = cropper.rect;
+    document.getElementById('cropperCoords').textContent =
+        `x1=${r.x1}, y1=${r.y1}, x2=${r.x2}, y2=${r.y2}`;
+}
+
+(function bindCropperMouse() {
+    const img = document.getElementById('cropperImg');
+
+    function localPos(e) {
+        const rect = img.getBoundingClientRect();
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        return {x: cx, y: cy};
+    }
+
+    function start(e) {
+        if (!cropper.camId || !img.naturalWidth) return;
+        e.preventDefault();
+        const p = localPos(e);
+        cropper.drawing = true;
+        cropper.startX = p.x;
+        cropper.startY = p.y;
+        cropper.rect = {
+            x1: Math.round(p.x / cropper.scale),
+            y1: Math.round(p.y / cropper.scale),
+            x2: Math.round(p.x / cropper.scale),
+            y2: Math.round(p.y / cropper.scale),
+        };
+        drawCropperBox();
+    }
+
+    function move(e) {
+        if (!cropper.drawing) return;
+        e.preventDefault();
+        const p = localPos(e);
+        const x = Math.max(0, Math.min(p.x, img.clientWidth));
+        const y = Math.max(0, Math.min(p.y, img.clientHeight));
+        cropper.rect.x2 = Math.round(x / cropper.scale);
+        cropper.rect.y2 = Math.round(y / cropper.scale);
+        drawCropperBox();
+    }
+
+    function end() {
+        if (!cropper.drawing) return;
+        cropper.drawing = false;
+        // Normalize so x1<x2, y1<y2
+        const r = cropper.rect;
+        cropper.rect = {
+            x1: Math.min(r.x1, r.x2),
+            y1: Math.min(r.y1, r.y2),
+            x2: Math.max(r.x1, r.x2),
+            y2: Math.max(r.y1, r.y2),
+        };
+        drawCropperBox();
+    }
+
+    img.addEventListener('mousedown', start);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    img.addEventListener('touchstart', start, {passive: false});
+    window.addEventListener('touchmove', move, {passive: false});
+    window.addEventListener('touchend', end);
+})();
+
+async function saveCropperRegion() {
+    if (!cropper.camId || !cropper.rect) {
+        alert('Draw a rectangle first.');
+        return;
+    }
+    const r = cropper.rect;
+    if (r.x2 <= r.x1 || r.y2 <= r.y1) {
+        alert('Region is empty — drag a bigger rectangle.');
+        return;
+    }
+    const res = await api(`/api/anpr-cameras/${cropper.camId}/detect-region`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(r),
+    });
+    if (!res.success) {
+        alert('Save failed: ' + (res.error || 'unknown'));
+        return;
+    }
+    const card = document.querySelector(`[data-camera-id="${cropper.camId}"]`);
+    const field = _regionField(card);
+    if (field) field.value = res.detect_region;
+    closeCropper();
+}
+
+// ---------- Init (runs after all consts are declared) ----------
+document.querySelectorAll('.camera-mapping-card').forEach(applyMode);
+</script>
+{% endblock %}
