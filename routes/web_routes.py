@@ -329,9 +329,21 @@ def settings():
     try:
         cfg = config.get_all()
         sync_status = sync_service.get_status()
+
+        # Parse camera relay devices grid (JSON array) and pad to 8 rows
+        try:
+            camera_devices = json.loads(cfg.get('camera_relay_devices', '') or '[]')
+        except Exception:
+            camera_devices = []
+        if not isinstance(camera_devices, list):
+            camera_devices = []
+        while len(camera_devices) < 8:
+            camera_devices.append({})
+
         return render_template('settings.html',
             config=cfg,
-            sync_status=sync_status
+            sync_status=sync_status,
+            camera_devices=camera_devices
         )
     except Exception as e:
         logger.error(f"Settings page error: {e}")

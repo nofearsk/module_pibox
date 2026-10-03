@@ -93,6 +93,12 @@ DEFAULTS = {
     'lpr_enabled': 'false',                                       # Master switch
     'lpr_detector_model': 'yolo-v9-t-384-license-plate-end2end',  # open-image-models hub id
     'lpr_ocr_model': 'cct-xs-v1-global-model',                    # fast-plate-ocr hub id
+
+    # Camera Relay Settings (Hikvision devices via ISAPI)
+    'camera_relay_enabled': 'false',          # Master toggle (takes priority over web relay)
+    'camera_relay_pulse_time': '1.0',         # Pulse duration in seconds (alarm-output mode)
+    'camera_relay_invert': 'false',           # true = trigger level is LOW instead of HIGH
+    'camera_relay_devices': '[]',             # JSON array of up to 8 camera relay devices
 }
 
 

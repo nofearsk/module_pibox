@@ -227,6 +227,102 @@
         </div>
     </div>
 
+    <!-- Barrier Relay Mapping Grid -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Barrier Relay Mapping</h2>
+        </div>
+        <div class="card-body">
+            <p style="color: #888; margin-bottom: 15px;">
+                Route each PiBox relay channel to a backend. By default every
+                channel uses GPIO &mdash; or the Web Relay board once that is enabled.
+                Add a row, tick its <strong>On</strong> switch, and that channel is
+                sent instead to a <strong>Hikvision</strong> camera barrier, a
+                <strong>Web Relay</strong> channel, or a <strong>GPIO</strong> pin.
+                A row's <strong>On</strong> checkbox is the only switch &mdash;
+                unticked rows fall back to the default backend.
+            </p>
+            <div class="form-group" style="max-width: 240px;">
+                <label>Pulse Time (seconds)</label>
+                <input type="number" id="camera-relay-pulse-time" value="{{ config.camera_relay_pulse_time or 1.0 }}" min="0.1" max="600" step="0.1">
+                <small>Alarm-output hold time. Ignored for door controllers.</small>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="camera-relay-grid" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="text-align: left; border-bottom: 1px solid #444;">
+                            <th style="padding: 6px;">#</th>
+                            <th style="padding: 6px;">On</th>
+                            <th style="padding: 6px;">Brand</th>
+                            <th style="padding: 6px;">IP Address</th>
+                            <th style="padding: 6px;">Port</th>
+                            <th style="padding: 6px;">Username</th>
+                            <th style="padding: 6px;">Password</th>
+                            <th style="padding: 6px;">Type</th>
+                            <th style="padding: 6px;">Target Ch</th>
+                            <th style="padding: 6px;">Pi Relay Map</th>
+                            <th style="padding: 6px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for dev in camera_devices %}
+                    {% set rownum = loop.index %}
+                        <tr data-row="{{ rownum }}" style="border-bottom: 1px solid #2a2a2a;">
+                            <td style="padding: 4px 6px;">{{ rownum }}</td>
+                            <td style="padding: 4px 6px; text-align: center;">
+                                <input type="checkbox" class="cr-enabled" {% if dev.enabled is not defined or dev.enabled %}checked{% endif %} title="Enable / disable this mapping">
+                            </td>
+                            <td style="padding: 4px 6px;">
+                                <select class="cr-brand" onchange="updateRowBrand(this)">
+                                    <option value="hikvision" {% if (dev.brand or 'hikvision') == 'hikvision' %}selected{% endif %}>Hikvision</option>
+                                    <option value="web" {% if dev.brand == 'web' %}selected{% endif %}>Web Relay</option>
+                                    <option value="gpio" {% if dev.brand == 'gpio' %}selected{% endif %}>GPIO</option>
+                                </select>
+                            </td>
+                            <td style="padding: 4px 6px;"><input type="text" class="cr-ip" value="{{ dev.ip or '' }}" placeholder="192.168.1.x" style="width: 120px;"></td>
+                            <td style="padding: 4px 6px;"><input type="number" class="cr-port" value="{{ dev.port or 80 }}" style="width: 60px;"></td>
+                            <td style="padding: 4px 6px;"><input type="text" class="cr-username" value="{{ dev.username or 'admin' }}" style="width: 90px;"></td>
+                            <td style="padding: 4px 6px;"><input type="password" class="cr-password" value="{{ dev.password or '' }}" placeholder="password" style="width: 100px;"></td>
+                            <td style="padding: 4px 6px;">
+                                <select class="cr-type">
+                                    <option value="parking" {% if (dev.type or 'parking') == 'parking' %}selected{% endif %}>ANPR Barrier</option>
+                                    <option value="alarmout" {% if dev.type == 'alarmout' %}selected{% endif %}>Alarm Out</option>
+                                    <option value="door" {% if dev.type == 'door' %}selected{% endif %}>Door Ctrl</option>
+                                </select>
+                            </td>
+                            <td style="padding: 4px 6px;"><input type="text" class="cr-trigger" value="{{ dev.trigger or '1' }}" style="width: 50px;"></td>
+                            <td style="padding: 4px 6px;">
+                                <select class="cr-pimap">
+                                    {% for n in range(1, 9) %}
+                                    <option value="{{ n }}" {% if (dev.pi_map or rownum)|int == n %}selected{% endif %}>{{ n }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td style="padding: 4px 6px; white-space: nowrap;">
+                                <button type="button" class="btn" onclick="testCameraRelayRow({{ rownum }})">Test</button>
+                                <button type="button" class="btn btn-primary" onclick="openCameraRelayRow({{ rownum }})">Open</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <small style="color: #888; display: block; margin-top: 10px;">
+                <strong>On</strong>: untick to disable a row without losing its settings (channel falls back to the default backend).
+                <strong>Brand</strong>: Hikvision camera / Web Relay board / GPIO pin.
+                <strong>Type</strong> (Hikvision only): ANPR Barrier (/ISAPI/Parking), Alarm Out or Door Ctrl.
+                <strong>Target Ch</strong>: the barrier/output/door id on a Hikvision device, or the channel number on the Web Relay / GPIO.
+                <strong>Pi Relay Map</strong>: the PiBox relay channel this row handles &mdash;
+                must match the relay channel set on the ANPR camera for that lane.
+                <br><strong>Test</strong> only checks the connection &mdash; <strong>Open</strong> actually opens the barrier.
+            </small>
+            <div class="form-actions" style="margin-top: 15px;">
+                <button type="button" onclick="saveCameraRelayGrid()" class="btn btn-primary">Save All</button>
+                <button type="button" onclick="testCameraRelay()" class="btn">Test All</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Danger Zone -->
     <div class="card" style="border-color: #dc3545;">
         <div class="card-header" style="background: linear-gradient(145deg, #3d1a1a, #2d1515); border-bottom: 1px solid #dc3545;">
@@ -360,6 +456,112 @@
             })
             .catch(err => {
                 alert('Error testing web relay: ' + err);
+            });
+    }
+
+    function updateRowBrand(sel) {
+        const row = sel.closest('tr');
+        if (!row) return;
+        const isHik = sel.value === 'hikvision';
+        ['cr-ip', 'cr-port', 'cr-username', 'cr-password', 'cr-type'].forEach(function(c) {
+            const el = row.querySelector('.' + c);
+            if (el) { el.disabled = !isHik; el.style.opacity = isHik ? '1' : '0.35'; }
+        });
+        // Test / Open only apply to Hikvision rows
+        row.querySelectorAll('button').forEach(function(b) {
+            b.disabled = !isHik; b.style.opacity = isHik ? '1' : '0.35';
+        });
+    }
+
+    // Apply brand-conditional styling on page load
+    document.querySelectorAll('#camera-relay-grid .cr-brand').forEach(updateRowBrand);
+
+    function collectCameraRow(row) {
+        return {
+            enabled: row.querySelector('.cr-enabled').checked,
+            brand: row.querySelector('.cr-brand').value,
+            ip: row.querySelector('.cr-ip').value.trim(),
+            port: parseInt(row.querySelector('.cr-port').value) || 80,
+            username: row.querySelector('.cr-username').value.trim(),
+            password: row.querySelector('.cr-password').value,
+            type: row.querySelector('.cr-type').value,
+            trigger: row.querySelector('.cr-trigger').value.trim() || '1',
+            pi_map: parseInt(row.querySelector('.cr-pimap').value) || 1
+        };
+    }
+
+    function saveCameraRelayGrid() {
+        const rows = document.querySelectorAll('#camera-relay-grid tbody tr');
+        const devices = [];
+        rows.forEach(function(row) { devices.push(collectCameraRow(row)); });
+        const data = {
+            camera_relay_enabled: 'true',
+            camera_relay_pulse_time: document.getElementById('camera-relay-pulse-time').value,
+            camera_relay_devices: JSON.stringify(devices)
+        };
+        saveConfig(data);
+    }
+
+    function testCameraRelayRow(rowNum) {
+        const row = document.querySelector('#camera-relay-grid tbody tr[data-row="' + rowNum + '"]');
+        if (!row) return;
+        const dev = collectCameraRow(row);
+        if (!dev.ip) { alert('Row ' + rowNum + ': enter an IP address first'); return; }
+        fetch('/api/camera-relay/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dev)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Row ' + rowNum + ' OK\n\n' + (data.message || 'Connected'));
+            } else {
+                alert('Row ' + rowNum + ' failed:\n\n' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Error testing row ' + rowNum + ': ' + err));
+    }
+
+    function openCameraRelayRow(rowNum) {
+        const row = document.querySelector('#camera-relay-grid tbody tr[data-row="' + rowNum + '"]');
+        if (!row) return;
+        const dev = collectCameraRow(row);
+        if (!dev.ip) { alert('Row ' + rowNum + ': enter an IP address first'); return; }
+        if (!confirm('Open the barrier on row ' + rowNum + '  (' + dev.ip + ')?')) return;
+        fetch('/api/camera-relay/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dev)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Row ' + rowNum + ': ' + (data.message || 'Barrier opened'));
+            } else {
+                alert('Row ' + rowNum + ' failed:\n\n' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Error opening row ' + rowNum + ': ' + err));
+    }
+
+    function testCameraRelay() {
+        fetch('/api/camera-relay/test', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.results) {
+                    const msg = data.results.map(function(r) {
+                        return (r.success ? 'OK   ' : 'FAIL ') + r.ip + '  ->  ' + (r.message || r.error);
+                    }).join('\n');
+                    alert('Camera relay test:\n\n' + msg);
+                } else if (data.success) {
+                    alert('Camera relay connection successful!');
+                } else {
+                    alert('Camera relay test failed:\n\n' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Error testing camera relays: ' + err);
             });
     }
 

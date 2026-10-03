@@ -26,6 +26,7 @@ class WebRelayService:
     """Service for controlling Iotzone V5+ Ethernet Relay via HTTP"""
 
     _instance = None
+    mode_name = 'web'
 
     def __new__(cls):
         if cls._instance is None:

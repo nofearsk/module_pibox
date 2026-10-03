@@ -374,6 +374,62 @@ def get_web_relay_status():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ============== Camera Relay (Hikvision ISAPI) ==============
+
+@api_bp.route('/api/camera-relay/test', methods=['POST'])
+def test_camera_relay():
+    """Test a Hikvision device.
+
+    POST a single device row {ip, port, username, password, type, trigger}
+    to test that row, or an empty body to test all configured devices.
+    """
+    try:
+        from services.camera_relay_service import camera_relay_service
+        device = request.get_json(silent=True) or {}
+        if device.get('ip'):
+            result = camera_relay_service.test_device(device)
+        else:
+            result = camera_relay_service.test_connection()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Camera relay test error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/camera-relay/trigger', methods=['POST'])
+def trigger_camera_relay():
+    """Manually fire a camera relay device - opens the barrier.
+
+    POST a device row {ip, port, username, password, type, trigger}.
+    """
+    try:
+        from services.camera_relay_service import camera_relay_service
+        device = request.get_json(silent=True) or {}
+        result = camera_relay_service.trigger_device(device)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Camera relay trigger error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/camera-relay/status', methods=['GET'])
+def get_camera_relay_status():
+    """Get camera relay status"""
+    try:
+        from services.camera_relay_service import camera_relay_service
+        cfg = camera_relay_service._get_config()
+        devices = [d for d in cfg['devices'] if d and d.get('ip')]
+        return jsonify({
+            'success': True,
+            'enabled': cfg['enabled'],
+            'device_count': len(devices),
+            'last_error': camera_relay_service.last_error,
+            'relays': camera_relay_service.get_all_states()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @api_bp.route('/api/relay/<int:channel>/on', methods=['POST', 'GET'])
 def relay_on(channel):
     """Turn relay ON"""
