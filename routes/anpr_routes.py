@@ -235,6 +235,12 @@ def hikfeed(code="", password=""):
                     images['vehicle'].append({'filename': filename, 'data': img_data})
                     logger.info(f"Received vehicle image: {filename} ({len(img_data)} bytes)")
 
+        # Any push from a known camera (heartBeat.xml, alarm.xml, ANPR) proves it is alive
+        if code and not plate and AnprCameraModel.get_by_reg_code(code):
+            AnprCameraModel.update_heartbeat(code)
+            logger.info(f"Heartbeat (no plate) from {camera_ip}, code: {code}")
+            return jsonify({'success': True, 'heartbeat': True})
+
         # Check if we got a plate number
         if not plate:
             logger.warning(f"No plate number in Hikvision feed from {camera_ip}")
