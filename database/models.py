@@ -786,11 +786,11 @@ class AnprCameraModel:
         db.commit()
 
     @staticmethod
-    def get_health_status(timeout_minutes=5):
+    def get_health_status(timeout_minutes=30):
         """Get all cameras with their health status
 
         Args:
-            timeout_minutes: Minutes without heartbeat before marking offline (default 5)
+            timeout_minutes: Minutes without heartbeat before marking offline (default 30; Hikvision ITC heartbeats come ~every 25 min)
 
         Returns:
             List of camera dicts with 'status' field ('online'/'offline'/'unknown')
@@ -830,13 +830,13 @@ class AnprCameraModel:
         return result
 
     @staticmethod
-    def get_online_count(timeout_minutes=5):
+    def get_online_count(timeout_minutes=30):
         """Get count of online cameras"""
         cameras = AnprCameraModel.get_health_status(timeout_minutes)
         return sum(1 for c in cameras if c['status'] == 'online')
 
     @staticmethod
-    def get_offline_count(timeout_minutes=5):
+    def get_offline_count(timeout_minutes=30):
         """Get count of offline cameras"""
         cameras = AnprCameraModel.get_health_status(timeout_minutes)
         return sum(1 for c in cameras if c['status'] == 'offline')

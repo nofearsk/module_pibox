@@ -400,7 +400,7 @@ def health():
     try:
         health_data = system_health.get_all_health()
         # Get ANPR camera health status
-        camera_health = AnprCameraModel.get_health_status(timeout_minutes=5)
+        camera_health = AnprCameraModel.get_health_status(timeout_minutes=30)
         cameras_online = sum(1 for c in camera_health if c['status'] == 'online')
         cameras_offline = sum(1 for c in camera_health if c['status'] == 'offline')
         cameras_unknown = sum(1 for c in camera_health if c['status'] == 'unknown')
