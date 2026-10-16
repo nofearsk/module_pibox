@@ -153,7 +153,8 @@
     }
 
     function connectWebSocket() {
-        const wsUrl = `ws://${window.location.hostname}:8081`;
+        const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${wsScheme}://${window.location.hostname}:8081`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {

@@ -118,6 +118,18 @@ def create_app():
         else:
             return jsonify({"success": False, "error": "Invalid action"}), 400
 
+    @app.route('/tls/ca.crt')
+    def tls_ca_cert():
+        """Our CA certificate (public), installed once on each client so
+        https:// and wss:// to this Pi are trusted."""
+        from flask import send_file, abort
+        from services.dual_tls import tls_dir
+        path = os.path.join(tls_dir(), 'ca.crt')
+        if not os.path.exists(path):
+            abort(404)
+        return send_file(path, mimetype='application/x-x509-ca-cert',
+                         as_attachment=True, download_name='pibox-ca.crt')
+
     return app
 
 
@@ -193,12 +205,19 @@ def main():
     # Register cleanup
     atexit.register(stop_services)
 
-    # Run server
-    logger.info(f"Starting PiBox Edge Controller on http://0.0.0.0:{HTTP_PORT}")
-    logger.info(f"WebSocket server on ws://0.0.0.0:8081")
+    # Run server. With a certificate in /var/pibox/tls the same ports also
+    # answer https:// and wss:// (services/dual_tls.py).
+    from services.dual_tls import server_context, make_http_server
+    ctx = server_context()
 
     try:
-        app.run(host='0.0.0.0', port=HTTP_PORT, debug=False, threaded=True)
+        if ctx is None:
+            logger.info(f"Starting PiBox Edge Controller on http://0.0.0.0:{HTTP_PORT}")
+            logger.info(f"WebSocket server on ws://0.0.0.0:8081")
+            app.run(host='0.0.0.0', port=HTTP_PORT, debug=False, threaded=True)
+        else:
+            logger.info(f"Starting PiBox Edge Controller on http:// + https://0.0.0.0:{HTTP_PORT}")
+            make_http_server('0.0.0.0', HTTP_PORT, app, ctx).serve_forever()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
 

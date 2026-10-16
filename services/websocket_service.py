@@ -21,6 +21,13 @@ except ImportError:
     logger.warning("websockets not available - WebSocket server disabled")
 
 
+def _client_ip(websocket):
+    """Caller IP, seen through the ws/wss relay when TLS is on."""
+    from services.dual_tls import real_peer
+    addr = real_peer(websocket.remote_address)
+    return addr[0] if addr else 'unknown'
+
+
 class WebSocketService:
     """Service for WebSocket real-time communication"""
 
@@ -48,11 +55,12 @@ class WebSocketService:
         self._camera_subscriptions = {}
         # Camera-specific message queue: [(reg_code, message, event_data), ...]
         self._camera_queue = []
+        self._relay = None
 
     async def _handler(self, websocket, path=None):
         """Handle WebSocket connections"""
         self.clients.add(websocket)
-        client_ip = websocket.remote_address[0] if websocket.remote_address else 'unknown'
+        client_ip = _client_ip(websocket)
         logger.info(f"WebSocket client connected: {client_ip} (total: {len(self.clients)})")
 
         try:
@@ -98,7 +106,7 @@ class WebSocketService:
                 if websocket not in self._camera_subscriptions:
                     self._camera_subscriptions[websocket] = {}
                 self._camera_subscriptions[websocket][camera] = filter_type
-                client_ip = websocket.remote_address[0] if websocket.remote_address else 'unknown'
+                client_ip = _client_ip(websocket)
                 await websocket.send(json.dumps({
                     'type': 'subscribed',
                     'camera': camera,
@@ -188,7 +196,7 @@ class WebSocketService:
         dead_clients = set()
         logger.info(f"Broadcasting to camera {reg_code}, {len(self._camera_subscriptions)} clients with subscriptions")
         for client, subscriptions in list(self._camera_subscriptions.items()):
-            client_ip = client.remote_address[0] if client.remote_address else 'unknown'
+            client_ip = _client_ip(client)
             logger.info(f"  Client {client_ip} subscriptions: {list(subscriptions.keys())}")
             if reg_code in subscriptions:
                 filter_type = subscriptions[reg_code]
@@ -210,12 +218,12 @@ class WebSocketService:
                 if should_send:
                     try:
                         await client.send(msg_str)
-                        client_ip = client.remote_address[0] if client.remote_address else 'unknown'
+                        client_ip = _client_ip(client)
                         logger.info(f"Sent event to {client_ip} (camera: {reg_code}, filter: {filter_type})")
                     except Exception:
                         dead_clients.add(client)
                 else:
-                    client_ip = client.remote_address[0] if client.remote_address else 'unknown'
+                    client_ip = _client_ip(client)
                     logger.info(f"Filtered event for {client_ip} (camera: {reg_code}, filter: {filter_type}, access: {access_granted})")
 
         # Clean up dead clients
@@ -280,6 +288,16 @@ class WebSocketService:
         if self._running:
             return
 
+        # TLS set up: the relay owns the public port (ws:// and wss://) and
+        # the websockets server listens on loopback only.
+        from services.dual_tls import server_context, WsRelay
+        ctx = server_context()
+        if ctx is not None:
+            inner_port = port + 10000
+            self._relay = WsRelay(host, port, inner_port, ctx)
+            self._relay.start()
+            host, port = '127.0.0.1', inner_port
+
         def run_loop():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
@@ -296,6 +314,8 @@ class WebSocketService:
     def stop(self):
         """Stop WebSocket server"""
         self._running = False
+        if self._relay:
+            self._relay.stop()
         if self._thread:
             self._thread.join(timeout=5)
         logger.info("WebSocket server stopped")

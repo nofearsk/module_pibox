@@ -9,7 +9,8 @@ const WS_RECONNECT_DELAY = 5000;
 function initWebSocket() {
     const wsPort = window.WS_PORT || 8081;
     const wsHost = window.location.hostname;
-    const wsUrl = `ws://${wsHost}:${wsPort}`;
+    const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${wsScheme}://${wsHost}:${wsPort}`;
 
     console.log('Connecting to WebSocket:', wsUrl);
 
